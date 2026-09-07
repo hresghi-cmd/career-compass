@@ -27,6 +27,10 @@ test("ships the complete interactive assessment", async () => {
   const pkg = await readFile(new URL("../package.json", import.meta.url), "utf8");
   assert.match(page, /localStorage\.setItem/);
   assert.match(page, /navigator\.clipboard\.writeText/);
+  assert.match(page, /AudioContext/);
+  assert.match(page, /navigator\.vibrate/);
+  assert.match(page, /stage === "milestone"/);
+  assert.match(page, /YOUR TALENT COMBINATION/);
   assert.match(page, /const questions: Question\[\]/);
   assert.match(page, /计分规则与使用说明/);
   assert.doesNotMatch(pkg, /react-loading-skeleton/);

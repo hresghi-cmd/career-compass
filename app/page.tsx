@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 type TalentKey = "spark" | "insight" | "connect" | "care" | "order" | "venture";
-type Stage = "cover" | "quiz" | "result";
+type Stage = "cover" | "quiz" | "milestone" | "result";
 type Choice = { label: string; scores: Partial<Record<TalentKey, number>> };
 type Question = { scene: string; prompt: string; choices: Choice[] };
 
@@ -12,6 +12,7 @@ const STORAGE_KEY = "career-compass-progress-v1";
 const talents: Record<TalentKey, {
   short: string; title: string; role: string; symbol: string; color: string;
   description: string; traits: string; advice: string; paths: string[];
+  quote: string; bestAt: string; avoid: string;
 }> = {
   spark: {
     short: "创意", title: "灵感造物者", role: "把不存在的东西带到现实", symbol: "✦", color: "#ef6a4c",
@@ -19,6 +20,9 @@ const talents: Record<TalentKey, {
     traits: "你对重复和僵化格外敏感，需要一定自主权才能进入最佳状态。别人可能觉得你跳跃，但你的大脑其实在高速连接看似无关的信息。比起被严密管理，你更适合有目标、有反馈、但允许自己选择路径的环境。",
     advice: "别只做“点子很多的人”。为灵感建立稳定的落地节奏：先做最小版本，再用真实反馈迭代。选择岗位时重点观察作品是否可见、表达是否被尊重，以及你能否参与定义问题，而不只是美化已有答案。",
     paths: ["品牌创意", "内容策划", "产品设计", "新媒体", "体验设计"],
+    quote: "你不是缺少耐心，只是很难长期住在别人已经画好的格子里。",
+    bestAt: "从零定义概念、创造独特表达、把抽象感觉变成可见作品",
+    avoid: "只有机械执行、没有表达空间，长期以重复产量衡量价值的环境",
   },
   insight: {
     short: "洞察", title: "深潜解题者", role: "在复杂里找到真正的关键", symbol: "◎", color: "#7357d3",
@@ -26,6 +30,9 @@ const talents: Record<TalentKey, {
     traits: "你重视准确胜过速度，也更愿意用扎实判断换取长期可靠。你不一定是最先发言的人，却常能指出被忽略的变量。需要留意的是，追求完整可能让行动推迟，独自思考太久也会错过他人的现场信息。",
     advice: "给分析设置“足够好”的截止线，并练习把结论翻译成别人能执行的下一步。理想岗位应当允许深入、鼓励质疑，也能让研究结果真正进入决策，而不是长期停留在报告里。",
     paths: ["数据分析", "行业研究", "用户研究", "策略咨询", "技术研发"],
+    quote: "你并不慢，你只是习惯先找到那个真正值得回答的问题。",
+    bestAt: "拆解复杂问题、发现隐藏规律、用证据支持重要判断",
+    avoid: "只追求表面速度、不允许质疑，也不使用研究结论的环境",
   },
   connect: {
     short: "影响", title: "共振推动者", role: "让想法被听见，让人愿意行动", symbol: "↗", color: "#d84d72",
@@ -33,6 +40,9 @@ const talents: Record<TalentKey, {
     traits: "你的能量往往来自互动、反馈与可见的影响。你善于建立关系，却也可能因为太在意回应而消耗自己。真正成熟的影响力，不是让所有人喜欢，而是在理解分歧后仍能清楚表达立场、促成有质量的决定。",
     advice: "把你的沟通天赋和一项硬能力绑定，例如商业判断、内容、销售或组织协作。选择岗位时观察它是否有真实的决策空间和对外连接，而不只是高频开会。为自己保留独处复盘的时间，影响力会更稳。",
     paths: ["市场营销", "商务拓展", "公关传播", "社区运营", "管理培训"],
+    quote: "你真正擅长的不是说服，而是让不同的人愿意朝同一个方向走。",
+    bestAt: "建立信任、翻译复杂观点、聚合资源并推动共识",
+    avoid: "高频沟通却没有决策空间，关系消耗大于真实影响的环境",
   },
   care: {
     short: "助人", title: "成长陪伴者", role: "看见人的需要，托住长期改变", symbol: "◡", color: "#2d8f75",
@@ -40,6 +50,9 @@ const talents: Record<TalentKey, {
     traits: "你耐心、可靠、重视关系中的信任，通常擅长倾听与因人而异地调整方法。但共情并不等于无限承担。若边界模糊，你容易把别人的情绪和责任都背在自己身上，久而久之会失去职业能量。",
     advice: "练习把善意变成专业方法和清晰边界：明确服务对象、可交付结果与停止条件。适合你的环境应当尊重人的差异，也重视长期效果。选择能看见反馈的工作，会比抽象的“帮助所有人”更有力量。",
     paths: ["教育培训", "心理与助人", "人力资源", "客户成功", "公共服务"],
+    quote: "你的温和不是退让，而是一种让改变能够真正发生的力量。",
+    bestAt: "倾听真实需要、建立安全感、陪伴他人跨过困难阶段",
+    avoid: "把共情当成无限责任、边界模糊且长期情绪透支的环境",
   },
   order: {
     short: "秩序", title: "系统建造者", role: "让混乱变得稳定、清楚、可复用", symbol: "▦", color: "#2f6f95",
@@ -47,6 +60,9 @@ const talents: Record<TalentKey, {
     traits: "你认真、守承诺，面对复杂协作时很有稳定感。你喜欢清楚的边界和可预期的节奏，但并不意味着保守；你更倾向于在理解规则后稳步改进。需要避免因为怕出错而把所有变量都控制得过细。",
     advice: "不要只做团队里默默兜底的人，要把你的流程能力显性化：定义标准、展示改善前后的数据，并推动责任回到正确位置。选择重视运营质量、又允许持续优化的组织，你会越来越不可替代。",
     paths: ["项目管理", "运营管理", "财务审计", "供应链", "质量与合规"],
+    quote: "你看见的从来不只是一次任务，而是它下一次如何更稳地发生。",
+    bestAt: "建立流程与标准、控制风险、让多人协作稳定运转",
+    avoid: "责任边界混乱、长期依赖临时救火又拒绝复盘的环境",
   },
   venture: {
     short: "行动", title: "开路实践者", role: "先走进现场，再找到可行路径", symbol: "△", color: "#c57a16",
@@ -54,6 +70,9 @@ const talents: Record<TalentKey, {
     traits: "你务实、果断，喜欢看得见的进展和直接的责任。现场越复杂，你越容易进入状态；但当速度成为惯性，可能忽略必要的复盘或他人的节奏。真正高水平的行动，是既敢下注，也知道何时停下来校准。",
     advice: "为每次快速尝试设定验证指标，行动后留出复盘，让经验沉淀成判断力。适合你的岗位通常目标明确、离结果近，并能接触客户或一线现场。避免长期困在只有审批、没有决定权的位置。",
     paths: ["创业与业务", "销售管理", "产品运营", "现场工程", "应急与执行"],
+    quote: "你不需要看清整条路，真实迈出的第一步就是你的地图。",
+    bestAt: "快速试错、现场决策、把不确定变成看得见的进展",
+    avoid: "层层审批、离结果太远，只有讨论却不能亲自行动的环境",
   },
 };
 
@@ -118,6 +137,13 @@ const questions: Question[] = [
   ]),
 ];
 
+const talentOrder = Object.keys(talents) as TalentKey[];
+const questionAccents = ["#ef6a4c", "#2d8f75", "#7357d3", "#c57a16", "#d84d72", "#2f6f95"];
+const milestoneCopy = {
+  6: { step: "第一段坐标已定位", title: "你处理未知的方式，开始显形。", body: "接下来别考虑哪种答案更理想，只留意：哪一个动作最像没有人要求时，你也会自然去做的事。", mark: "Ⅰ" },
+  12: { step: "第二段坐标已定位", title: "你的优势，不只是一项技能。", body: "它更像一种稳定的工作姿态。最后 6 个场景会观察你在选择、压力与长期成长中的真实偏好。", mark: "Ⅱ" },
+};
+
 function calculateScores(answers: number[]) {
   const raw = Object.fromEntries(Object.keys(talents).map((key) => [key, 0])) as Record<TalentKey, number>;
   answers.forEach((choiceIndex, questionIndex) => {
@@ -139,10 +165,13 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
+  const [soundOn, setSoundOn] = useState(true);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
+      setSoundOn(localStorage.getItem(`${STORAGE_KEY}-sound`) !== "off");
       if (saved) {
         const parsed = JSON.parse(saved) as { answers?: number[]; current?: number };
         if (Array.isArray(parsed.answers) && parsed.answers.length > 0) {
@@ -164,8 +193,36 @@ export default function Home() {
   const winner = results.ranked[0]?.key ?? "spark";
   const winnerInfo = talents[winner];
   const secondary = results.ranked[1]?.key ?? "insight";
+  const questionAccent = questionAccents[current % questionAccents.length];
+
+  const playFeedback = (kind: "select" | "complete", force = false) => {
+    if (!soundOn && !force) return;
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const context = new AudioContextClass();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = kind === "complete" ? "sine" : "triangle";
+      oscillator.frequency.setValueAtTime(kind === "complete" ? 523 : 330, context.currentTime);
+      if (kind === "complete") oscillator.frequency.exponentialRampToValueAtTime(784, context.currentTime + .18);
+      gain.gain.setValueAtTime(.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(kind === "complete" ? .055 : .035, context.currentTime + .012);
+      gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + (kind === "complete" ? .28 : .12));
+      oscillator.connect(gain); gain.connect(context.destination); oscillator.start();
+      oscillator.stop(context.currentTime + (kind === "complete" ? .3 : .14));
+      oscillator.addEventListener("ended", () => void context.close());
+    } catch { /* Sound is an enhancement; the visual feedback still works. */ }
+  };
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    localStorage.setItem(`${STORAGE_KEY}-sound`, next ? "on" : "off");
+    if (next) playFeedback("select", true);
+  };
 
   const start = () => {
+    playFeedback("select");
     if (answers.length === questions.length) setStage("result");
     else { setCurrent(Math.min(answers.length, questions.length - 1)); setStage("quiz"); }
   };
@@ -173,16 +230,21 @@ export default function Home() {
   const choose = (choiceIndex: number) => {
     if (transitioning) return;
     setTransitioning(true);
+    setSelectedChoice(choiceIndex);
+    playFeedback("select");
+    if ("vibrate" in navigator) navigator.vibrate(18);
     const next = answers.slice(); next[current] = choiceIndex; next.splice(current + 1); setAnswers(next);
     window.setTimeout(() => {
-      if (current === questions.length - 1) setStage("result");
+      if (current === questions.length - 1) { setStage("result"); playFeedback("complete"); }
+      else if (current === 5 || current === 11) { setCurrent((value) => value + 1); setStage("milestone"); }
       else setCurrent((value) => value + 1);
+      setSelectedChoice(null);
       setTransitioning(false);
-    }, 300);
+    }, 430);
   };
 
   const goBack = () => current === 0 ? setStage("cover") : setCurrent((value) => value - 1);
-  const reset = () => { localStorage.removeItem(STORAGE_KEY); setAnswers([]); setCurrent(0); setStage("cover"); setCopied(false); };
+  const reset = () => { localStorage.removeItem(STORAGE_KEY); setAnswers([]); setCurrent(0); setStage("cover"); setCopied(false); setSelectedChoice(null); };
   const shareText = `我的职业天赋主型是「${winnerInfo.title}」，第二天赋是「${talents[secondary].short}」。原来适合我的，不是某一个标准答案，而是一种能发挥天赋的工作方式。来测测你的职业天赋坐标吧！`;
 
   const copyShare = async () => {
@@ -193,6 +255,18 @@ export default function Home() {
     setCopied(true); window.setTimeout(() => setCopied(false), 1800);
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (stage !== "quiz" || transitioning) return;
+      const choice = Number(event.key) - 1;
+      if (choice >= 0 && choice <= 3) choose(choice);
+      if (event.key === "ArrowLeft") goBack();
+      if (event.key.toLowerCase() === "m") toggleSound();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
   if (!loaded) return <main className="app-shell" aria-busy="true" />;
 
   return (
@@ -200,13 +274,16 @@ export default function Home() {
       <div className="ambient ambient-one" /><div className="ambient ambient-two" />
       {stage === "cover" && (
         <section className="cover page-enter" aria-labelledby="site-title">
-          <nav className="brand-row" aria-label="网站信息"><span className="brand-mark">C</span><span>CAREER COMPASS</span><span className="edition">2026 EDITION</span></nav>
+          <nav className="brand-row" aria-label="网站信息"><span className="brand-mark">C</span><span>CAREER COMPASS</span><button className="sound-toggle" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span>{soundOn ? "◖))" : "◖×"}</span>{soundOn ? "声效开启" : "声效关闭"}</button></nav>
           <div className="cover-copy">
             <div className="eyebrow"><span /> 一场关于工作方式的自我勘探</div>
             <h1 id="site-title">你的职业天赋<br /><em>藏在哪个坐标？</em></h1>
             <p className="lead">18 个真实工作场景，避开“你喜欢什么”的空泛答案，看看你在复杂世界里最自然、最有能量的那种能力。</p>
           </div>
-          <div className="compass-card" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="needle" /><div className="axis axis-n">N</div><div className="axis axis-e">E</div><div className="axis axis-s">S</div><div className="axis axis-w">W</div><span className="coordinate">31.2304° N<br />121.4737° E</span></div>
+          <div className="compass-wrap">
+            <div className="compass-card" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="needle" /><div className="axis axis-n">N</div><div className="axis axis-e">E</div><div className="axis axis-s">S</div><div className="axis axis-w">W</div><span className="coordinate">TALENT<br />COORDINATE</span></div>
+            <div className="talent-legend" aria-label="六类职业天赋">{talentOrder.map((key) => <span key={key} style={{ "--legend-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i>{talents[key].short}</span>)}</div>
+          </div>
           <div className="cover-action">
             <button className="primary-button" onClick={start}>{answers.length > 0 ? "继续上次测试" : "开始探索"}<span>→</span></button>
             <div className="test-meta"><span>18 题</span><span>约 3 分钟</span><span>6 类天赋</span></div>
@@ -221,21 +298,51 @@ export default function Home() {
           <header className="quiz-header">
             <button className="icon-button" onClick={goBack} aria-label="上一题">←</button>
             <div className="progress-wrap"><div className="progress-copy"><span>探索进度</span><strong>{String(current + 1).padStart(2, "0")} / {questions.length}</strong></div><div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={questions.length} aria-valuenow={current + 1}><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div></div>
-            <button className="reset-mini" onClick={reset}>重置</button>
+            <button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}>{soundOn ? "◖))" : "◖×"}</button>
           </header>
-          <div className="question-block" key={current}><div className="question-number">SCENE {String(current + 1).padStart(2, "0")}</div><p className="scene">{questions[current].scene}</p><h2 id="question-title">{questions[current].prompt}</h2></div>
-          <div className="choices" role="group" aria-label="请选择最符合你的选项">
-            {questions[current].choices.map((choice, index) => <button className={`choice ${answers[current] === index ? "selected" : ""}`} key={choice.label} onClick={() => choose(index)} disabled={transitioning}><span className="choice-letter">{String.fromCharCode(65 + index)}</span><span>{choice.label}</span><span className="choice-arrow">↗</span></button>)}
+          <div className="talent-ribbon" aria-hidden="true">{talentOrder.map((key, index) => <span key={key} className={current >= index * 3 ? "lit" : ""} style={{ "--dot-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i><b>{talents[key].short}</b></span>)}</div>
+          <div className="question-block" key={current} style={{ "--question-accent": questionAccent } as React.CSSProperties}>
+            <div className="question-card-top"><div className="question-number">SCENE {String(current + 1).padStart(2, "0")}</div><span>真实职场场景</span></div>
+            <p className="scene">{questions[current].scene}</p>
+            <h2 id="question-title">{questions[current].prompt}</h2>
+            <div className="question-decoration" aria-hidden="true"><span /><span /><span /></div>
           </div>
-          <p className="quiz-tip">不用寻找“更正确”的答案，选择你最自然的第一反应。</p>
+          <div className="choices" role="group" aria-label="请选择最符合你的选项">
+            {questions[current].choices.map((choice, index) => <button className={`choice ${selectedChoice === index || (!transitioning && answers[current] === index) ? "selected" : ""} ${transitioning && selectedChoice !== index ? "deemphasized" : ""}`} key={choice.label} onClick={() => choose(index)} disabled={transitioning}><span className="choice-letter">{selectedChoice === index ? "✓" : String.fromCharCode(65 + index)}</span><span>{choice.label}</span><span className="choice-arrow">{selectedChoice === index ? "已选择" : "↗"}</span></button>)}
+          </div>
+          <div className="quiz-footer"><button className="reset-mini" onClick={reset}>清除进度</button><p className="quiz-tip">按 1—4 也可快速选择 · 不用寻找“更正确”的答案</p><span>← 返回</span></div>
+        </section>
+      )}
+
+      {stage === "milestone" && (
+        <section className="milestone page-enter" aria-labelledby="milestone-title">
+          <div className="milestone-grid" aria-hidden="true">{talentOrder.map((key) => <span key={key} style={{ backgroundColor: talents[key].color }}>{talents[key].symbol}</span>)}</div>
+          <div className="milestone-copy">
+            <span className="milestone-mark">{milestoneCopy[current as 6 | 12].mark}</span>
+            <p>{milestoneCopy[current as 6 | 12].step} · {current} / {questions.length}</p>
+            <h2 id="milestone-title">{milestoneCopy[current as 6 | 12].title}</h2>
+            <div className="milestone-line" />
+            <p className="milestone-body">{milestoneCopy[current as 6 | 12].body}</p>
+            <button className="primary-button" onClick={() => { playFeedback("select"); setStage("quiz"); }}>继续探索<span>→</span></button>
+          </div>
         </section>
       )}
 
       {stage === "result" && (
         <section className="result page-enter" aria-labelledby="result-title">
-          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="text-button" onClick={reset}>重新测试</button></header>
+          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn}>{soundOn ? "◖))" : "◖×"}</button><button className="text-button" onClick={reset}>重新测试</button></header>
           <div className="result-hero" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
-            <div className="result-kicker">YOUR PRIMARY TALENT · {winnerInfo.short}</div><div className="result-symbol">{winnerInfo.symbol}</div><h1 id="result-title">{winnerInfo.title}</h1><p>{winnerInfo.role}</p><div className="result-tags">{winnerInfo.paths.slice(0, 3).map((path) => <span key={path}>{path}</span>)}</div>
+            <div className="identity-card">
+              <div className="id-top"><span>CAREER COMPASS</span><span>NO. 018</span></div>
+              <div className="result-symbol">{winnerInfo.symbol}</div>
+              <div className="result-kicker">YOUR PRIMARY TALENT · {winnerInfo.short}</div>
+              <h1 id="result-title">{winnerInfo.title}</h1>
+              <p className="result-role">{winnerInfo.role}</p>
+              <blockquote>“{winnerInfo.quote}”</blockquote>
+              <div className="result-tags">{winnerInfo.paths.slice(0, 3).map((path) => <span key={path}>{path}</span>)}</div>
+              <div className="id-bottom"><span>主天赋 {winnerInfo.short}</span><span>第二天赋 {talents[secondary].short}</span></div>
+            </div>
+            <aside className="combination-card"><span>YOUR TALENT COMBINATION</span><h2>{winnerInfo.short} × {talents[secondary].short}</h2><p>你以<strong>{winnerInfo.role}</strong>作为主要驱动力，同时带着“{talents[secondary].role}”的第二视角。这不是两个标签的相加，而是你处理复杂工作时最有辨识度的组合。</p><div><em>最能发挥</em><b>{winnerInfo.bestAt}</b></div><div><em>容易消耗</em><b>{winnerInfo.avoid}</b></div></aside>
           </div>
           <div className="result-grid">
             <article className="panel score-panel"><div className="panel-heading"><span>01</span><h2>天赋光谱</h2><p>以你的最高倾向为 100%</p></div><div className="bars">{results.ranked.map(({ key, percent }, index) => <div className="bar-row" key={key}><div className="bar-label"><span>{String(index + 1).padStart(2, "0")}</span><strong>{talents[key].short}</strong><em>{percent}%</em></div><div className="bar-track"><span style={{ width: `${percent}%`, backgroundColor: talents[key].color }} /></div></div>)}</div><p className="secondary-note">你的第二天赋是 <strong>{talents[secondary].title}</strong>。它会让你的主型表现得更有个人特色。</p></article>
