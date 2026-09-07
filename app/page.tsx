@@ -1,0 +1,253 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type TalentKey = "spark" | "insight" | "connect" | "care" | "order" | "venture";
+type Stage = "cover" | "quiz" | "result";
+type Choice = { label: string; scores: Partial<Record<TalentKey, number>> };
+type Question = { scene: string; prompt: string; choices: Choice[] };
+
+const STORAGE_KEY = "career-compass-progress-v1";
+
+const talents: Record<TalentKey, {
+  short: string; title: string; role: string; symbol: string; color: string;
+  description: string; traits: string; advice: string; paths: string[];
+}> = {
+  spark: {
+    short: "创意", title: "灵感造物者", role: "把不存在的东西带到现实", symbol: "✦", color: "#ef6a4c",
+    description: "你真正享受的不是照着答案执行，而是从一片空白里找到新的表达。面对模糊任务，你会先捕捉感觉、建立概念，再把零散线索组合成让人眼前一亮的方案。你的优势在于原创、审美与打破惯例。",
+    traits: "你对重复和僵化格外敏感，需要一定自主权才能进入最佳状态。别人可能觉得你跳跃，但你的大脑其实在高速连接看似无关的信息。比起被严密管理，你更适合有目标、有反馈、但允许自己选择路径的环境。",
+    advice: "别只做“点子很多的人”。为灵感建立稳定的落地节奏：先做最小版本，再用真实反馈迭代。选择岗位时重点观察作品是否可见、表达是否被尊重，以及你能否参与定义问题，而不只是美化已有答案。",
+    paths: ["品牌创意", "内容策划", "产品设计", "新媒体", "体验设计"],
+  },
+  insight: {
+    short: "洞察", title: "深潜解题者", role: "在复杂里找到真正的关键", symbol: "◎", color: "#7357d3",
+    description: "你擅长把热闹的问题拆开，找到藏在表象下面的规律。面对未知，你的第一反应不是马上表态，而是搜集证据、建立假设、验证逻辑。越是复杂、需要独立思考的难题，越容易激发你的专注力。",
+    traits: "你重视准确胜过速度，也更愿意用扎实判断换取长期可靠。你不一定是最先发言的人，却常能指出被忽略的变量。需要留意的是，追求完整可能让行动推迟，独自思考太久也会错过他人的现场信息。",
+    advice: "给分析设置“足够好”的截止线，并练习把结论翻译成别人能执行的下一步。理想岗位应当允许深入、鼓励质疑，也能让研究结果真正进入决策，而不是长期停留在报告里。",
+    paths: ["数据分析", "行业研究", "用户研究", "策略咨询", "技术研发"],
+  },
+  connect: {
+    short: "影响", title: "共振推动者", role: "让想法被听见，让人愿意行动", symbol: "↗", color: "#d84d72",
+    description: "你对人的情绪、现场气氛和表达效果非常敏锐。你能迅速找到共同语言，把复杂想法讲得有感染力，也愿意站出来推动共识。对你而言，工作不只是完成任务，更是让一群人朝同一个方向动起来。",
+    traits: "你的能量往往来自互动、反馈与可见的影响。你善于建立关系，却也可能因为太在意回应而消耗自己。真正成熟的影响力，不是让所有人喜欢，而是在理解分歧后仍能清楚表达立场、促成有质量的决定。",
+    advice: "把你的沟通天赋和一项硬能力绑定，例如商业判断、内容、销售或组织协作。选择岗位时观察它是否有真实的决策空间和对外连接，而不只是高频开会。为自己保留独处复盘的时间，影响力会更稳。",
+    paths: ["市场营销", "商务拓展", "公关传播", "社区运营", "管理培训"],
+  },
+  care: {
+    short: "助人", title: "成长陪伴者", role: "看见人的需要，托住长期改变", symbol: "◡", color: "#2d8f75",
+    description: "你很容易注意到别人没说出口的困难，也愿意花时间理解一个人的处境。你带来的价值不是抢走问题，而是让对方重新获得力量。看到他人因为你的支持而变好，会给你很深的职业满足感。",
+    traits: "你耐心、可靠、重视关系中的信任，通常擅长倾听与因人而异地调整方法。但共情并不等于无限承担。若边界模糊，你容易把别人的情绪和责任都背在自己身上，久而久之会失去职业能量。",
+    advice: "练习把善意变成专业方法和清晰边界：明确服务对象、可交付结果与停止条件。适合你的环境应当尊重人的差异，也重视长期效果。选择能看见反馈的工作，会比抽象的“帮助所有人”更有力量。",
+    paths: ["教育培训", "心理与助人", "人力资源", "客户成功", "公共服务"],
+  },
+  order: {
+    short: "秩序", title: "系统建造者", role: "让混乱变得稳定、清楚、可复用", symbol: "▦", color: "#2f6f95",
+    description: "你天然会留意流程、标准和风险。当别人还在讨论大方向时，你已经开始思考资源怎么排、细节怎么接、结果如何验收。你最大的价值，是把一次性的成功整理成可以持续运转的系统。",
+    traits: "你认真、守承诺，面对复杂协作时很有稳定感。你喜欢清楚的边界和可预期的节奏，但并不意味着保守；你更倾向于在理解规则后稳步改进。需要避免因为怕出错而把所有变量都控制得过细。",
+    advice: "不要只做团队里默默兜底的人，要把你的流程能力显性化：定义标准、展示改善前后的数据，并推动责任回到正确位置。选择重视运营质量、又允许持续优化的组织，你会越来越不可替代。",
+    paths: ["项目管理", "运营管理", "财务审计", "供应链", "质量与合规"],
+  },
+  venture: {
+    short: "行动", title: "开路实践者", role: "先走进现场，再找到可行路径", symbol: "△", color: "#c57a16",
+    description: "你习惯通过行动理解世界。面对机会，你愿意先试一小步，在真实反馈里修正方向，而不是等待所有条件齐备。你对变化、挑战和有明确结果的任务更有感觉，也能在压力下快速调动资源。",
+    traits: "你务实、果断，喜欢看得见的进展和直接的责任。现场越复杂，你越容易进入状态；但当速度成为惯性，可能忽略必要的复盘或他人的节奏。真正高水平的行动，是既敢下注，也知道何时停下来校准。",
+    advice: "为每次快速尝试设定验证指标，行动后留出复盘，让经验沉淀成判断力。适合你的岗位通常目标明确、离结果近，并能接触客户或一线现场。避免长期困在只有审批、没有决定权的位置。",
+    paths: ["创业与业务", "销售管理", "产品运营", "现场工程", "应急与执行"],
+  },
+};
+
+const q = (scene: string, prompt: string, items: [string, TalentKey, TalentKey][]): Question => ({
+  scene, prompt, choices: items.map(([label, primary, secondary]) => ({ label, scores: { [primary]: 3, [secondary]: 1 } })),
+});
+
+const questions: Question[] = [
+  q("周一上午，团队收到一个只有一句话的新任务。", "你最自然的第一步是？", [
+    ["先画出几种大胆的成品样子，看看哪一种最有感觉", "spark", "venture"], ["追问目标和已有数据，先确认真正要解决的问题", "insight", "order"], ["把相关的人拉到一起，用一次短讨论快速对齐", "connect", "care"], ["拆成今天就能推进的小步骤，先做出一个能跑的版本", "venture", "order"],
+  ]),
+  q("朋友正在纠结要不要离开一份稳定但痛苦的工作。", "他最可能从你这里得到什么？", [
+    ["一段不催促的倾听，帮他听见自己真正的感受", "care", "insight"], ["一张利弊和风险清单，把模糊焦虑变成可判断的信息", "order", "insight"], ["几个他从没想过的替代方向，打开新的可能性", "spark", "connect"], ["一个两周试验方案，让他不辞职也能先验证新方向", "venture", "order"],
+  ]),
+  q("你接手了一场报名不理想的线下活动。", "你会优先改动哪一环？", [
+    ["重新提炼一个让人忍不住转发的主题和视觉概念", "spark", "connect"], ["访谈已报名和放弃报名的人，找出真实阻力", "insight", "care"], ["逐个联络关键社群，让合适的人替活动发声", "connect", "venture"], ["重排报名、提醒和到场流程，减少每一步流失", "order", "venture"],
+  ]),
+  q("你拥有一个完全自由、没有会议的下午。", "哪件事最容易让你忘记时间？", [
+    ["研究一个一直没想明白的问题，直到线索连起来", "insight", "spark"], ["整理手头混乱的资料，做成清楚好用的系统", "order", "insight"], ["做一个能立刻用上的小作品或动手改造", "venture", "spark"], ["约一个很久没深聊的人，听听彼此最近的变化", "care", "connect"],
+  ]),
+  q("会议陷入僵局，两方都坚持自己的方案。", "你通常会扮演什么角色？", [
+    ["重新讲清共同目标，让双方先站到同一边", "connect", "care"], ["找出双方分歧背后的假设，看哪一个能被验证", "insight", "order"], ["提出一个兼顾两边的新解法，改变原来的框架", "spark", "connect"], ["确定最小试行范围，用实际结果替代继续争论", "venture", "order"],
+  ]),
+  q("团队临时少了一个人，交付日期却不能变。", "你最有把握做好的事是？", [
+    ["迅速重排优先级和负责人，守住关键节点", "order", "venture"], ["稳住大家的状态，分别确认每个人真实的负荷", "care", "order"], ["争取外部支持或协调资源，让局面重新流动", "connect", "venture"], ["砍掉传统做法，想一个更轻、更快的交付形式", "spark", "venture"],
+  ]),
+  q("你要向完全不懂行的人解释一个复杂概念。", "你会怎么准备？", [
+    ["找一个贴近日常的比喻，让对方马上产生画面", "spark", "connect"], ["从对方关心的问题出发，边听反应边调整说法", "care", "connect"], ["先梳理最小知识链，保证每一步都严谨衔接", "insight", "order"], ["直接带他做一遍，让操作结果替代抽象解释", "venture", "care"],
+  ]),
+  q("一个项目结束了，结果不错，但过程非常混乱。", "你最想留下什么？", [
+    ["一套下次能直接复用的流程、模板和检查点", "order", "insight"], ["一次坦诚复盘，让每个人说出真实感受和收获", "care", "connect"], ["对关键决策的分析，弄清成功到底能否复制", "insight", "order"], ["一组有传播力的故事，让成果被更多人看见", "connect", "spark"],
+  ]),
+  q("你被安排学习一个从没接触过的新工具。", "哪种方式最适合你？", [
+    ["先随手做个小东西，遇到问题再查", "venture", "spark"], ["先理解它的原理、边界和典型用法", "insight", "order"], ["找个用得好的人聊聊，观察他的工作方式", "connect", "care"], ["建立自己的练习清单，按难度逐项攻克", "order", "venture"],
+  ]),
+  q("同事交来的方案很努力，但离标准还有明显距离。", "你更可能怎么反馈？", [
+    ["先确认他卡在哪里，再陪他找到可做到的下一步", "care", "insight"], ["把标准和差距说清楚，给出具体修改清单", "order", "care"], ["用一个更有吸引力的示例，激发他重新想象", "spark", "connect"], ["当面快速过一遍，现场把最关键部分改出来", "venture", "connect"],
+  ]),
+  q("你可以选择加入以下四个新项目。", "哪个项目最让你心动？", [
+    ["从零创造一个新品牌，定义它的语言与气质", "spark", "connect"], ["研究用户行为，找出产品增长停滞的根因", "insight", "order"], ["搭建一套跨部门协作机制，让团队稳定提速", "order", "connect"], ["进入陌生市场，用一个月拿到第一批真实客户", "venture", "connect"],
+  ]),
+  q("工作中突然出现一个没人负责的棘手问题。", "什么最能促使你主动站出来？", [
+    ["它会影响很多人的体验，而他们目前没人支持", "care", "order"], ["它背后的原因很反常，让我忍不住想弄明白", "insight", "spark"], ["我知道该找谁、该怎么把资源迅速组织起来", "connect", "venture"], ["再拖下去损失更大，不如现在就先处理现场", "venture", "order"],
+  ]),
+  q("有人给你一笔预算，让你改善团队的工作体验。", "你最想把钱花在哪里？", [
+    ["更顺手的工具和自动化，把重复劳动彻底减少", "order", "insight"], ["一次真正有质量的团队共创和关系建设", "care", "connect"], ["一个有辨识度的工作空间，让灵感更容易发生", "spark", "care"], ["让大家直接接触客户和现场，缩短反馈距离", "venture", "connect"],
+  ]),
+  q("你要做一个影响未来一年的重要选择。", "哪种依据最能让你安心？", [
+    ["足够多的证据，以及我对风险的独立判断", "insight", "order"], ["这个选择是否符合我想成为的那种人", "care", "spark"], ["和几位信任的人深谈后形成的综合直觉", "connect", "insight"], ["先设计一次低成本试水，靠反馈逐步确认", "venture", "order"],
+  ]),
+  q("你发现一套沿用了多年的规定已经不合时宜。", "你会如何推动改变？", [
+    ["拿出数据与案例，证明问题不是偶发现象", "insight", "order"], ["设计一个更直观的新方案，让大家看见可能性", "spark", "venture"], ["先争取关键人物支持，再逐步扩大共识", "connect", "care"], ["在小范围建立新流程，跑通后再正式推广", "order", "venture"],
+  ]),
+  q("忙碌一周后，你回看自己做过的事情。", "哪一刻最能带来真实成就感？", [
+    ["原本迷茫的人因为我的陪伴重新有了方向", "care", "connect"], ["一个我的原创想法终于变成了看得见的作品", "spark", "venture"], ["我发现了关键规律，让一个难题突然变清楚", "insight", "spark"], ["大家因为我建立的机制，不再反复救火", "order", "care"],
+  ]),
+  q("你要在陌生城市完成一个时间紧、资源少的任务。", "你最依赖自己的哪种能力？", [
+    ["迅速和陌生人建立联系，找到愿意帮忙的人", "connect", "care"], ["边走边试，看到机会就立即调整路线", "venture", "spark"], ["提前梳理关键节点，把有限资源用在刀刃上", "order", "insight"], ["观察当地细节，找到别人没有注意到的突破口", "insight", "venture"],
+  ]),
+  q("如果未来五年只能持续磨炼一种能力。", "你最愿意选择哪一种？", [
+    ["创造独特表达，让普通事物拥有新的意义", "spark", "insight"], ["理解人与关系，帮助变化真正发生", "care", "connect"], ["洞察复杂系统，做出经得起推敲的判断", "insight", "order"], ["把不确定变成行动，在现实中开出一条路", "venture", "connect"],
+  ]),
+];
+
+function calculateScores(answers: number[]) {
+  const raw = Object.fromEntries(Object.keys(talents).map((key) => [key, 0])) as Record<TalentKey, number>;
+  answers.forEach((choiceIndex, questionIndex) => {
+    const choice = questions[questionIndex]?.choices[choiceIndex];
+    if (!choice) return;
+    Object.entries(choice.scores).forEach(([key, value]) => { raw[key as TalentKey] += value ?? 0; });
+  });
+  const max = Math.max(...Object.values(raw), 1);
+  const ranked = (Object.keys(raw) as TalentKey[])
+    .map((key) => ({ key, raw: raw[key], percent: Math.round((raw[key] / max) * 100) }))
+    .sort((a, b) => b.raw - a.raw);
+  return { raw, ranked };
+}
+
+export default function Home() {
+  const [stage, setStage] = useState<Stage>("cover");
+  const [current, setCurrent] = useState(0);
+  const [answers, setAnswers] = useState<number[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { answers?: number[]; current?: number };
+        if (Array.isArray(parsed.answers) && parsed.answers.length > 0) {
+          setAnswers(parsed.answers.slice(0, questions.length));
+          setCurrent(Math.min(parsed.current ?? parsed.answers.length, questions.length - 1));
+          setStage(parsed.answers.length === questions.length ? "result" : "quiz");
+        }
+      }
+    } catch { localStorage.removeItem(STORAGE_KEY); }
+    finally { setLoaded(true); }
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || stage === "cover") return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ answers, current }));
+  }, [answers, current, stage, loaded]);
+
+  const results = useMemo(() => calculateScores(answers), [answers]);
+  const winner = results.ranked[0]?.key ?? "spark";
+  const winnerInfo = talents[winner];
+  const secondary = results.ranked[1]?.key ?? "insight";
+
+  const start = () => {
+    if (answers.length === questions.length) setStage("result");
+    else { setCurrent(Math.min(answers.length, questions.length - 1)); setStage("quiz"); }
+  };
+
+  const choose = (choiceIndex: number) => {
+    if (transitioning) return;
+    setTransitioning(true);
+    const next = answers.slice(); next[current] = choiceIndex; next.splice(current + 1); setAnswers(next);
+    window.setTimeout(() => {
+      if (current === questions.length - 1) setStage("result");
+      else setCurrent((value) => value + 1);
+      setTransitioning(false);
+    }, 300);
+  };
+
+  const goBack = () => current === 0 ? setStage("cover") : setCurrent((value) => value - 1);
+  const reset = () => { localStorage.removeItem(STORAGE_KEY); setAnswers([]); setCurrent(0); setStage("cover"); setCopied(false); };
+  const shareText = `我的职业天赋主型是「${winnerInfo.title}」，第二天赋是「${talents[secondary].short}」。原来适合我的，不是某一个标准答案，而是一种能发挥天赋的工作方式。来测测你的职业天赋坐标吧！`;
+
+  const copyShare = async () => {
+    try { await navigator.clipboard.writeText(shareText); }
+    catch {
+      const area = document.createElement("textarea"); area.value = shareText; document.body.appendChild(area); area.select(); document.execCommand("copy"); area.remove();
+    }
+    setCopied(true); window.setTimeout(() => setCopied(false), 1800);
+  };
+
+  if (!loaded) return <main className="app-shell" aria-busy="true" />;
+
+  return (
+    <main className="app-shell">
+      <div className="ambient ambient-one" /><div className="ambient ambient-two" />
+      {stage === "cover" && (
+        <section className="cover page-enter" aria-labelledby="site-title">
+          <nav className="brand-row" aria-label="网站信息"><span className="brand-mark">C</span><span>CAREER COMPASS</span><span className="edition">2026 EDITION</span></nav>
+          <div className="cover-copy">
+            <div className="eyebrow"><span /> 一场关于工作方式的自我勘探</div>
+            <h1 id="site-title">你的职业天赋<br /><em>藏在哪个坐标？</em></h1>
+            <p className="lead">18 个真实工作场景，避开“你喜欢什么”的空泛答案，看看你在复杂世界里最自然、最有能量的那种能力。</p>
+          </div>
+          <div className="compass-card" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="needle" /><div className="axis axis-n">N</div><div className="axis axis-e">E</div><div className="axis axis-s">S</div><div className="axis axis-w">W</div><span className="coordinate">31.2304° N<br />121.4737° E</span></div>
+          <div className="cover-action">
+            <button className="primary-button" onClick={start}>{answers.length > 0 ? "继续上次测试" : "开始探索"}<span>→</span></button>
+            <div className="test-meta"><span>18 题</span><span>约 3 分钟</span><span>6 类天赋</span></div>
+            {answers.length > 0 && <button className="text-button" onClick={reset}>清除进度，重新开始</button>}
+          </div>
+          <p className="disclaimer">这是一份职业倾向探索工具，不用于招聘筛选或临床诊断。</p>
+        </section>
+      )}
+
+      {stage === "quiz" && (
+        <section className={`quiz page-enter ${transitioning ? "is-leaving" : ""}`} aria-labelledby="question-title">
+          <header className="quiz-header">
+            <button className="icon-button" onClick={goBack} aria-label="上一题">←</button>
+            <div className="progress-wrap"><div className="progress-copy"><span>探索进度</span><strong>{String(current + 1).padStart(2, "0")} / {questions.length}</strong></div><div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={questions.length} aria-valuenow={current + 1}><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div></div>
+            <button className="reset-mini" onClick={reset}>重置</button>
+          </header>
+          <div className="question-block" key={current}><div className="question-number">SCENE {String(current + 1).padStart(2, "0")}</div><p className="scene">{questions[current].scene}</p><h2 id="question-title">{questions[current].prompt}</h2></div>
+          <div className="choices" role="group" aria-label="请选择最符合你的选项">
+            {questions[current].choices.map((choice, index) => <button className={`choice ${answers[current] === index ? "selected" : ""}`} key={choice.label} onClick={() => choose(index)} disabled={transitioning}><span className="choice-letter">{String.fromCharCode(65 + index)}</span><span>{choice.label}</span><span className="choice-arrow">↗</span></button>)}
+          </div>
+          <p className="quiz-tip">不用寻找“更正确”的答案，选择你最自然的第一反应。</p>
+        </section>
+      )}
+
+      {stage === "result" && (
+        <section className="result page-enter" aria-labelledby="result-title">
+          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="text-button" onClick={reset}>重新测试</button></header>
+          <div className="result-hero" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
+            <div className="result-kicker">YOUR PRIMARY TALENT · {winnerInfo.short}</div><div className="result-symbol">{winnerInfo.symbol}</div><h1 id="result-title">{winnerInfo.title}</h1><p>{winnerInfo.role}</p><div className="result-tags">{winnerInfo.paths.slice(0, 3).map((path) => <span key={path}>{path}</span>)}</div>
+          </div>
+          <div className="result-grid">
+            <article className="panel score-panel"><div className="panel-heading"><span>01</span><h2>天赋光谱</h2><p>以你的最高倾向为 100%</p></div><div className="bars">{results.ranked.map(({ key, percent }, index) => <div className="bar-row" key={key}><div className="bar-label"><span>{String(index + 1).padStart(2, "0")}</span><strong>{talents[key].short}</strong><em>{percent}%</em></div><div className="bar-track"><span style={{ width: `${percent}%`, backgroundColor: talents[key].color }} /></div></div>)}</div><p className="secondary-note">你的第二天赋是 <strong>{talents[secondary].title}</strong>。它会让你的主型表现得更有个人特色。</p></article>
+            <article className="panel analysis-panel"><div className="panel-heading"><span>02</span><h2>你的工作底色</h2></div><div className="analysis-copy"><section><h3>结果解读</h3><p>{winnerInfo.description}</p></section><section><h3>性格与能量</h3><p>{winnerInfo.traits}</p></section><section><h3>具体建议</h3><p>{winnerInfo.advice}</p></section></div></article>
+            <article className="panel path-panel"><div className="panel-heading"><span>03</span><h2>值得探索的方向</h2><p>不是岗位处方，而是你的下一组搜索词</p></div><div className="path-list">{winnerInfo.paths.map((path, index) => <div key={path}><span>{String(index + 1).padStart(2, "0")}</span><strong>{path}</strong><em>↗</em></div>)}</div></article>
+            <article className="panel action-panel"><div className="panel-heading"><span>04</span><h2>7 天微行动</h2></div><p>从上面的方向中挑一个，不急着决定转行。找一位真实从业者，问清楚他一周里最常做的三件事；再用 90 分钟做一个最小体验。你在行动后的能量变化，比任何标签都更接近答案。</p></article>
+          </div>
+          <div className="share-card"><div><span>SHARE YOUR COORDINATE</span><h2>把你的坐标发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}<span>↗</span></button></div>
+          <details className="method"><summary>计分规则与使用说明 <span>＋</span></summary><p>每道题的首要倾向记 3 分、辅助倾向记 1 分，累计六类天赋得分并排序。图表以本次测试最高分为 100% 显示相对强度；它反映的是你在所给场景中的偏好，不代表能力上限，也不等于唯一职业答案。若两类分数接近，说明你更可能以“组合天赋”开展工作。</p></details>
+          <footer>CAREER COMPASS · 认识自己，是选择的起点</footer>
+        </section>
+      )}
+    </main>
+  );
+}
