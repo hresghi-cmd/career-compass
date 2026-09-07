@@ -31,6 +31,9 @@ test("ships the complete interactive assessment", async () => {
   assert.match(page, /navigator\.vibrate/);
   assert.match(page, /stage === "milestone"/);
   assert.match(page, /YOUR TALENT COMBINATION/);
+  assert.match(page, /键盘 A \/ B \/ C \/ D/);
+  assert.match(page, /返回上一题修改/);
+  assert.match(page, /修改最后一题/);
   assert.match(page, /const questions: Question\[\]/);
   assert.match(page, /计分规则与使用说明/);
   assert.doesNotMatch(pkg, /react-loading-skeleton/);

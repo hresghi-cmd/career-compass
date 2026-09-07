@@ -243,7 +243,23 @@ export default function Home() {
     }, 430);
   };
 
-  const goBack = () => current === 0 ? setStage("cover") : setCurrent((value) => value - 1);
+  const goBack = () => {
+    setSelectedChoice(null);
+    if (stage === "result") {
+      setAnswers((value) => value.slice(0, questions.length - 1));
+      setCurrent(questions.length - 1);
+      setStage("quiz");
+      return;
+    }
+    if (stage === "milestone") {
+      setAnswers((value) => value.slice(0, Math.max(0, current - 1)));
+      setCurrent((value) => Math.max(0, value - 1));
+      setStage("quiz");
+      return;
+    }
+    if (current === 0) setStage("cover");
+    else setCurrent((value) => value - 1);
+  };
   const reset = () => { localStorage.removeItem(STORAGE_KEY); setAnswers([]); setCurrent(0); setStage("cover"); setCopied(false); setSelectedChoice(null); };
   const shareText = `我的职业天赋主型是「${winnerInfo.title}」，第二天赋是「${talents[secondary].short}」。原来适合我的，不是某一个标准答案，而是一种能发挥天赋的工作方式。来测测你的职业天赋坐标吧！`;
 
@@ -258,8 +274,8 @@ export default function Home() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (stage !== "quiz" || transitioning) return;
-      const choice = Number(event.key) - 1;
-      if (choice >= 0 && choice <= 3) choose(choice);
+      const letterChoice = ["a", "b", "c", "d"].indexOf(event.key.toLowerCase());
+      if (letterChoice >= 0) choose(letterChoice);
       if (event.key === "ArrowLeft") goBack();
       if (event.key.toLowerCase() === "m") toggleSound();
     };
@@ -296,7 +312,7 @@ export default function Home() {
       {stage === "quiz" && (
         <section className={`quiz page-enter ${transitioning ? "is-leaving" : ""}`} aria-labelledby="question-title">
           <header className="quiz-header">
-            <button className="icon-button" onClick={goBack} aria-label="上一题">←</button>
+            <button className="icon-button" onClick={goBack} aria-label={current === 0 ? "返回首页" : "返回上一题"} title={current === 0 ? "返回首页" : "返回上一题"}>←</button>
             <div className="progress-wrap"><div className="progress-copy"><span>探索进度</span><strong>{String(current + 1).padStart(2, "0")} / {questions.length}</strong></div><div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={questions.length} aria-valuenow={current + 1}><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div></div>
             <button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}>{soundOn ? "◖))" : "◖×"}</button>
           </header>
@@ -310,7 +326,7 @@ export default function Home() {
           <div className="choices" role="group" aria-label="请选择最符合你的选项">
             {questions[current].choices.map((choice, index) => <button className={`choice ${selectedChoice === index || (!transitioning && answers[current] === index) ? "selected" : ""} ${transitioning && selectedChoice !== index ? "deemphasized" : ""}`} key={choice.label} onClick={() => choose(index)} disabled={transitioning}><span className="choice-letter">{selectedChoice === index ? "✓" : String.fromCharCode(65 + index)}</span><span>{choice.label}</span><span className="choice-arrow">{selectedChoice === index ? "已选择" : "↗"}</span></button>)}
           </div>
-          <div className="quiz-footer"><button className="reset-mini" onClick={reset}>清除进度</button><p className="quiz-tip">按 1—4 也可快速选择 · 不用寻找“更正确”的答案</p><span>← 返回</span></div>
+          <div className="quiz-footer"><button className="back-button" onClick={goBack}>← {current === 0 ? "返回首页" : "返回上一题"}</button><p className="quiz-tip">使用电脑时，也可以直接按键盘 A / B / C / D 选择</p><button className="reset-mini" onClick={reset}>清除进度</button></div>
         </section>
       )}
 
@@ -323,14 +339,14 @@ export default function Home() {
             <h2 id="milestone-title">{milestoneCopy[current as 6 | 12].title}</h2>
             <div className="milestone-line" />
             <p className="milestone-body">{milestoneCopy[current as 6 | 12].body}</p>
-            <button className="primary-button" onClick={() => { playFeedback("select"); setStage("quiz"); }}>继续探索<span>→</span></button>
+            <div className="milestone-actions"><button className="primary-button" onClick={() => { playFeedback("select"); setStage("quiz"); }}>继续探索<span>→</span></button><button className="back-button" onClick={goBack}>← 返回上一题修改</button></div>
           </div>
         </section>
       )}
 
       {stage === "result" && (
         <section className="result page-enter" aria-labelledby="result-title">
-          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn}>{soundOn ? "◖))" : "◖×"}</button><button className="text-button" onClick={reset}>重新测试</button></header>
+          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn}>{soundOn ? "◖))" : "◖×"}</button><button className="result-back-button" onClick={goBack}>← 修改最后一题</button><button className="text-button" onClick={reset}>重新测试</button></header>
           <div className="result-hero" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
             <div className="identity-card">
               <div className="id-top"><span>CAREER COMPASS</span><span>NO. 018</span></div>
