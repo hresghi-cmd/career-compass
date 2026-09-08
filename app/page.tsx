@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type TalentKey = "spark" | "insight" | "connect" | "care" | "order" | "venture";
 type Stage = "cover" | "quiz" | "milestone" | "result";
@@ -129,7 +129,10 @@ export default function Home() {
   const [transitioning, setTransitioning] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [soundOn, setSoundOn] = useState(true);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
+  /* Browser progress is intentionally restored once after hydration. */
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -145,6 +148,7 @@ export default function Home() {
     } catch { localStorage.removeItem(STORAGE_KEY); }
     finally { setLoaded(true); }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!loaded || stage === "cover") return;
@@ -157,24 +161,54 @@ export default function Home() {
   const secondary = results.ranked[1]?.key ?? "insight";
   const questionAccent = questionAccents[current % questionAccents.length];
 
-  const playFeedback = (kind: "select" | "complete", force = false) => {
+  const playFeedback = (kind: "select" | "complete", force = false, position = 3) => {
     if (!soundOn && !force) return;
     try {
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const context = new AudioContextClass();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = kind === "complete" ? "sine" : "triangle";
-      oscillator.frequency.setValueAtTime(kind === "complete" ? 523 : 330, context.currentTime);
-      if (kind === "complete") oscillator.frequency.exponentialRampToValueAtTime(784, context.currentTime + .18);
-      gain.gain.setValueAtTime(.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(kind === "complete" ? .055 : .035, context.currentTime + .012);
-      gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + (kind === "complete" ? .28 : .12));
-      oscillator.connect(gain); gain.connect(context.destination); oscillator.start();
-      oscillator.stop(context.currentTime + (kind === "complete" ? .3 : .14));
-      oscillator.addEventListener("ended", () => void context.close());
+      const context = audioContextRef.current ?? new AudioContextClass();
+      audioContextRef.current = context;
+      if (context.state === "suspended") void context.resume();
+
+      const voice = (frequency: number, delay: number, duration: number, volume: number, type: OscillatorType, pan = 0) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const filter = context.createBiquadFilter();
+        const startAt = context.currentTime + delay;
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, startAt);
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(2200, startAt);
+        gain.gain.setValueAtTime(.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(volume, startAt + .018);
+        gain.gain.exponentialRampToValueAtTime(.0001, startAt + duration);
+        oscillator.connect(filter);
+        filter.connect(gain);
+        if (typeof context.createStereoPanner === "function") {
+          const panner = context.createStereoPanner();
+          panner.pan.setValueAtTime(pan, startAt);
+          gain.connect(panner);
+          panner.connect(context.destination);
+        } else gain.connect(context.destination);
+        oscillator.start(startAt);
+        oscillator.stop(startAt + duration + .02);
+      };
+
+      if (kind === "complete") {
+        [392, 523.25, 659.25, 783.99].forEach((frequency, index) => {
+          voice(frequency, index * .075, .34, index === 3 ? .045 : .032, index % 2 ? "sine" : "triangle", (index - 1.5) * .12);
+        });
+      } else {
+        const pitch = 280 + position * 34;
+        const pan = (position - 3) / 4;
+        voice(pitch, 0, .16, .027, "triangle", pan);
+        voice(pitch * 1.5, .035, .2, .014, "sine", pan * .6);
+      }
     } catch { /* Sound is an enhancement; the visual feedback still works. */ }
   };
+
+  useEffect(() => () => {
+    if (audioContextRef.current) void audioContextRef.current.close();
+  }, []);
 
   const toggleSound = () => {
     const next = !soundOn;
@@ -193,11 +227,15 @@ export default function Home() {
     if (transitioning) return;
     setTransitioning(true);
     setSelectedChoice(position);
-    playFeedback("select");
-    if ("vibrate" in navigator) navigator.vibrate(18);
+    playFeedback("select", false, position);
+    if ("vibrate" in navigator) navigator.vibrate(position === 0 || position === 6 ? [14, 18, 16] : 18);
     const next = answers.slice(); next[current] = position; next.splice(current + 1); setAnswers(next);
     window.setTimeout(() => {
-      if (current === questions.length - 1) { setStage("result"); playFeedback("complete"); }
+      if (current === questions.length - 1) {
+        setStage("result");
+        playFeedback("complete");
+        if ("vibrate" in navigator) navigator.vibrate([22, 34, 42]);
+      }
       else if (current === 5 || current === 11) { setCurrent((value) => value + 1); setStage("milestone"); }
       else setCurrent((value) => value + 1);
       setSelectedChoice(null);
@@ -246,18 +284,20 @@ export default function Home() {
   if (!loaded) return <main className="app-shell" aria-busy="true" />;
 
   return (
-    <main className="app-shell">
-      <div className="ambient ambient-one" /><div className="ambient ambient-two" />
+    <main className={`app-shell stage-${stage}`}>
+      <div className="ambient ambient-one" aria-hidden="true" />
+      <div className="ambient ambient-two" aria-hidden="true" />
+      <div className="ambient ambient-three" aria-hidden="true" />
       {stage === "cover" && (
         <section className="cover page-enter" aria-labelledby="site-title">
-          <nav className="brand-row" aria-label="网站信息"><span className="brand-mark">C</span><span>CAREER COMPASS</span><button className="sound-toggle" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span>{soundOn ? "◖))" : "◖×"}</span>{soundOn ? "声效开启" : "声效关闭"}</button></nav>
+          <nav className="brand-row" aria-label="网站信息"><span className="brand-mark">C</span><span>职业天赋坐标</span><button className="sound-toggle" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span>{soundOn ? "声效开启" : "声效关闭"}</button></nav>
           <div className="cover-copy">
             <div className="eyebrow"><span /> 一场关于工作方式的自我勘探</div>
             <h1 id="site-title">你的职业天赋<br /><em>藏在哪个坐标？</em></h1>
             <p className="lead">18 道轻量选择题，不用比较复杂答案。跟着第一感觉，在两种工作方式之间选出更像你的程度。</p>
           </div>
           <div className="compass-wrap">
-            <div className="compass-card" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="needle" /><div className="axis axis-n">N</div><div className="axis axis-e">E</div><div className="axis axis-s">S</div><div className="axis axis-w">W</div><span className="coordinate">TALENT<br />COORDINATE</span></div>
+            <div className="compass-card" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="needle" /><div className="axis axis-n">N</div><div className="axis axis-e">E</div><div className="axis axis-s">S</div><div className="axis axis-w">W</div></div>
             <div className="talent-legend" aria-label="六类职业天赋">{talentOrder.map((key) => <span key={key} style={{ "--legend-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i>{talents[key].short}</span>)}</div>
           </div>
           <div className="cover-action">
@@ -274,15 +314,15 @@ export default function Home() {
           <header className="quiz-header">
             <button className="icon-button" onClick={goBack} aria-label={current === 0 ? "返回首页" : "返回上一题"} title={current === 0 ? "返回首页" : "返回上一题"}>←</button>
             <div className="progress-wrap"><div className="progress-copy"><span>探索进度</span><strong>{String(current + 1).padStart(2, "0")} / {questions.length}</strong></div><div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={questions.length} aria-valuenow={current + 1}><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div></div>
-            <button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}>{soundOn ? "◖))" : "◖×"}</button>
+            <button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button>
           </header>
           <div className="talent-ribbon" aria-hidden="true">{talentOrder.map((key, index) => <span key={key} className={current >= index * 3 ? "lit" : ""} style={{ "--dot-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i><b>{talents[key].short}</b></span>)}</div>
           <div className="question-block" key={current} style={{ "--question-accent": questionAccent } as React.CSSProperties}>
-            <div className="question-card-top"><div className="question-number">QUESTION {String(current + 1).padStart(2, "0")}</div><span>{questions[current].scene}</span></div>
+            <div className="question-card-top"><div className="question-number">第 {String(current + 1).padStart(2, "0")} 题</div><span>{questions[current].scene}</span></div>
             <h2 id="question-title">{questions[current].prompt}</h2>
             <div className="question-decoration" aria-hidden="true"><span /><span /><span /></div>
           </div>
-          <div className="scale-card" style={{ "--left-color": talents[questions[current].left.talent].color, "--right-color": talents[questions[current].right.talent].color } as React.CSSProperties}>
+          <div key={`scale-${current}`} className={`scale-card ${selectedChoice !== null ? "has-selection" : ""}`} style={{ "--left-color": talents[questions[current].left.talent].color, "--right-color": talents[questions[current].right.talent].color } as React.CSSProperties}>
             <div className="scale-poles">
               <div className="pole pole-left"><span><i>{talents[questions[current].left.talent].symbol}</i>{talents[questions[current].left.talent].short}</span><strong>{questions[current].left.label}</strong><p>{questions[current].left.detail}</p></div>
               <div className="pole pole-right"><span>{talents[questions[current].right.talent].short}<i>{talents[questions[current].right.talent].symbol}</i></span><strong>{questions[current].right.label}</strong><p>{questions[current].right.detail}</p></div>
@@ -290,10 +330,11 @@ export default function Home() {
             <div className="scale-options" role="radiogroup" aria-label="请选择你在两种倾向之间的位置">
               {intensityLabels.map((label, index) => {
                 const isSelected = selectedChoice === index || (!transitioning && answers[current] === index);
-                return <button key={label} type="button" className={`scale-option level-${Math.abs(3 - index)} ${isSelected ? "selected" : ""} ${transitioning && selectedChoice !== index ? "deemphasized" : ""}`} role="radio" aria-checked={isSelected} aria-label={`${label}：${index < 3 ? questions[current].left.label : index > 3 ? questions[current].right.label : "两边都符合"}`} onClick={() => choose(index)} disabled={transitioning}><span className="scale-dot">{isSelected ? "✓" : ""}</span><small>{index === 0 || index === 6 ? "非常符合" : index === 3 ? "都可以" : ""}</small></button>;
+                return <button key={label} type="button" style={{ "--choice-index": index } as React.CSSProperties} className={`scale-option level-${Math.abs(3 - index)} ${isSelected ? "selected" : ""} ${transitioning && selectedChoice !== index ? "deemphasized" : ""}`} role="radio" aria-checked={isSelected} aria-label={`${label}：${index < 3 ? questions[current].left.label : index > 3 ? questions[current].right.label : "两边都符合"}`} onClick={() => choose(index)} disabled={transitioning}><span className="scale-dot"><span>{isSelected ? "✓" : ""}</span></span><small>{index === 0 || index === 6 ? "非常符合" : index === 3 ? "都符合" : ""}</small></button>;
               })}
             </div>
-            <p className="scale-help">越靠近一端，代表越符合；没有标准答案，凭第一感觉即可。</p>
+            <div className="scale-readout" aria-live="polite"><span>{selectedChoice === null ? "选择最接近你的程度" : intensityLabels[selectedChoice]}</span></div>
+            <p className="scale-help">越靠近一端，代表越符合。没有标准答案，凭第一感觉即可。</p>
           </div>
           <div className="quiz-footer"><button className="back-button" onClick={goBack}>← {current === 0 ? "返回首页" : "返回上一题"}</button><p className="quiz-tip">选择后将自动进入下一题</p><button className="reset-mini" onClick={reset}>清除进度</button></div>
         </section>
@@ -304,7 +345,7 @@ export default function Home() {
           <div className="milestone-grid" aria-hidden="true">{talentOrder.map((key) => <span key={key} style={{ backgroundColor: talents[key].color }}>{talents[key].symbol}</span>)}</div>
           <div className="milestone-copy">
             <span className="milestone-mark">{milestoneCopy[current as 6 | 12].mark}</span>
-            <p>{milestoneCopy[current as 6 | 12].step} · {current} / {questions.length}</p>
+            <p>{milestoneCopy[current as 6 | 12].step}<span>{current} / {questions.length}</span></p>
             <h2 id="milestone-title">{milestoneCopy[current as 6 | 12].title}</h2>
             <div className="milestone-line" />
             <p className="milestone-body">{milestoneCopy[current as 6 | 12].body}</p>
@@ -314,30 +355,30 @@ export default function Home() {
       )}
 
       {stage === "result" && (
-        <section className="result page-enter" aria-labelledby="result-title">
-          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn}>{soundOn ? "◖))" : "◖×"}</button><button className="result-back-button" onClick={goBack}>← 修改最后一题</button><button className="text-button" onClick={reset}>重新测试</button></header>
-          <div className="result-hero" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
+        <section className="result page-enter" aria-labelledby="result-title" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
+          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button><button className="result-back-button" onClick={goBack}>← 修改最后一题</button><button className="text-button" onClick={reset}>重新测试</button></header>
+          <div className="result-hero">
             <div className="identity-card">
-              <div className="id-top"><span>CAREER COMPASS</span><span>NO. 018</span></div>
+              <div className="id-top"><span>职业天赋坐标</span><span>完成 18 个场景</span></div>
               <div className="result-symbol">{winnerInfo.symbol}</div>
-              <div className="result-kicker">YOUR PRIMARY TALENT · {winnerInfo.short}</div>
+              <div className="result-kicker">你的主天赋 <span>{winnerInfo.short}</span></div>
               <h1 id="result-title">{winnerInfo.title}</h1>
               <p className="result-role">{winnerInfo.role}</p>
               <blockquote>“{winnerInfo.quote}”</blockquote>
               <div className="result-tags">{winnerInfo.paths.slice(0, 3).map((path) => <span key={path}>{path}</span>)}</div>
               <div className="id-bottom"><span>主天赋 {winnerInfo.short}</span><span>第二天赋 {talents[secondary].short}</span></div>
             </div>
-            <aside className="combination-card"><span>YOUR TALENT COMBINATION</span><h2>{winnerInfo.short} × {talents[secondary].short}</h2><p>你以<strong>{winnerInfo.role}</strong>作为主要驱动力，同时带着“{talents[secondary].role}”的第二视角。这不是两个标签的相加，而是你处理复杂工作时最有辨识度的组合。</p><div><em>最能发挥</em><b>{winnerInfo.bestAt}</b></div><div><em>容易消耗</em><b>{winnerInfo.avoid}</b></div></aside>
+            <aside className="combination-card"><span>你的独特组合</span><h2>{winnerInfo.short} × {talents[secondary].short}</h2><p>你以<strong>{winnerInfo.role}</strong>作为主要驱动力，同时带着“{talents[secondary].role}”的第二视角。这不是两个标签的相加，而是你处理复杂工作时最有辨识度的组合。</p><div><em>最能发挥</em><b>{winnerInfo.bestAt}</b></div><div><em>容易消耗</em><b>{winnerInfo.avoid}</b></div></aside>
           </div>
           <div className="result-grid">
-            <article className="panel score-panel"><div className="panel-heading"><span>01</span><h2>天赋光谱</h2><p>以你的最高倾向为 100%</p></div><div className="bars">{results.ranked.map(({ key, percent }, index) => <div className="bar-row" key={key}><div className="bar-label"><span>{String(index + 1).padStart(2, "0")}</span><strong>{talents[key].short}</strong><em>{percent}%</em></div><div className="bar-track"><span style={{ width: `${percent}%`, backgroundColor: talents[key].color }} /></div></div>)}</div><p className="secondary-note">你的第二天赋是 <strong>{talents[secondary].title}</strong>。它会让你的主型表现得更有个人特色。</p></article>
-            <article className="panel analysis-panel"><div className="panel-heading"><span>02</span><h2>你的工作底色</h2></div><div className="analysis-copy"><section><h3>结果解读</h3><p>{winnerInfo.description}</p></section><section><h3>性格与能量</h3><p>{winnerInfo.traits}</p></section><section><h3>具体建议</h3><p>{winnerInfo.advice}</p></section></div></article>
-            <article className="panel path-panel"><div className="panel-heading"><span>03</span><h2>值得探索的方向</h2><p>不是岗位处方，而是你的下一组搜索词</p></div><div className="path-list">{winnerInfo.paths.map((path, index) => <div key={path}><span>{String(index + 1).padStart(2, "0")}</span><strong>{path}</strong></div>)}</div></article>
-            <article className="panel action-panel"><div className="panel-heading"><span>04</span><h2>7 天微行动</h2></div><p>从上面的方向中挑一个，不急着决定转行。找一位真实从业者，问清楚他一周里最常做的三件事；再用 90 分钟做一个最小体验。你在行动后的能量变化，比任何标签都更接近答案。</p></article>
+            <article className="panel score-panel"><div className="panel-heading"><h2>天赋光谱</h2><p>最高倾向作为 100% 参照</p></div><div className="bars">{results.ranked.map(({ key, percent }, index) => <div className="bar-row" key={key} style={{ "--bar-color": talents[key].color, "--score-width": `${percent}%`, "--rank-delay": `${index * 90}ms` } as React.CSSProperties}><div className="bar-label"><span>{String(index + 1).padStart(2, "0")}</span><strong>{talents[key].short}</strong><em>{percent}%</em></div><div className="bar-line"><span /></div></div>)}</div><p className="secondary-note">第二天赋是 <strong>{talents[secondary].title}</strong>。它让你的主型表现得更有个人辨识度。</p></article>
+            <article className="panel analysis-panel"><div className="panel-heading"><h2>你的工作底色</h2></div><div className="analysis-copy"><section><h3>结果解读</h3><p>{winnerInfo.description}</p></section><section><h3>性格与能量</h3><p>{winnerInfo.traits}</p></section><section><h3>具体建议</h3><p>{winnerInfo.advice}</p></section></div></article>
+            <article className="panel path-panel"><div className="panel-heading"><h2>值得探索的方向</h2><p>它们不是岗位处方，而是你的下一组搜索词</p></div><div className="path-list">{winnerInfo.paths.map((path, index) => <div key={path} style={{ "--path-delay": `${index * 70}ms` } as React.CSSProperties}><span>{String(index + 1).padStart(2, "0")}</span><strong>{path}</strong></div>)}</div></article>
+            <article className="panel action-panel"><span className="action-mark" aria-hidden="true">7</span><div className="panel-heading"><h2>7 天微行动</h2></div><p>从上面的方向中挑一个，不急着决定转行。找一位真实从业者，问清楚他一周里最常做的三件事；再用 90 分钟做一个最小体验。你在行动后的能量变化，比任何标签都更接近答案。</p></article>
           </div>
-          <div className="share-card"><div><span>SHARE YOUR COORDINATE</span><h2>把你的坐标发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}</button></div>
+          <div className="share-card"><div><span>分享你的坐标</span><h2>把这份发现发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}</button></div>
           <details className="method"><summary>计分规则与使用说明 <span>＋</span></summary><p>每题比较两种职业倾向：越靠近某一端，该项天赋获得的权重越高；选择中间则两边获得相同权重。18 题让六类天赋都得到同等次数的比较，累计得分后排序。图表以本次最高分为 100% 显示相对强度；它反映的是你的偏好，不代表能力上限，也不等于唯一职业答案。</p></details>
-          <footer>CAREER COMPASS · 认识自己，是选择的起点</footer>
+          <footer>职业天赋坐标<br /><span>认识自己，是选择的起点</span></footer>
         </section>
       )}
     </main>

@@ -30,7 +30,7 @@ test("ships the complete interactive assessment", async () => {
   assert.match(page, /AudioContext/);
   assert.match(page, /navigator\.vibrate/);
   assert.match(page, /stage === "milestone"/);
-  assert.match(page, /YOUR TALENT COMBINATION/);
+  assert.match(page, /你的独特组合/);
   assert.match(page, /role="radiogroup"/);
   assert.match(page, /intensityLabels/);
   assert.doesNotMatch(page, /键盘 A \/ B \/ C \/ D/);
