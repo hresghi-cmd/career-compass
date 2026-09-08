@@ -84,3 +84,47 @@ button:focus-visible,summary:focus-visible { outline:3px solid var(--yellow); ou
   .result-hero { padding:28px 0 38px; grid-template-columns:1fr; gap:16px; }.identity-card { min-height:540px; padding:26px 24px 28px; border-radius:12px; box-shadow:7px 7px 0 var(--yellow); }.identity-card::after { left:24px; right:24px; top:72px; }.identity-card .result-symbol { margin-top:36px; font-size:58px; }.identity-card h1 { font-size:52px; }.identity-card blockquote { font-size:23px; }.combination-card { padding:27px 22px; border-radius:12px; }.combination-card h2 { font-size:38px; }.result-grid { margin-top:4px; }.share-card { box-shadow:6px 6px 0 var(--yellow); }
   .result-topbar { flex-wrap:wrap; }.result-topbar .sound-toggle { margin-left:auto; }.result-back-button { order:5; width:100%; margin-top:4px; border-radius:8px; }
 }
+
+/* Third-edition bipolar answer scale */
+.quiz.is-leaving .scale-card { opacity:.32; transform:translateY(-7px); }
+.question-block { margin:auto 0 24px; padding:28px 38px 32px; }
+.question-block h2 { max-width:790px; margin-top:26px; font-size:clamp(27px,3.8vw,38px); line-height:1.45; }
+.scale-card { padding:28px 34px 22px; border:1px solid var(--forest); border-radius:18px; background:rgba(255,254,249,.94); box-shadow:9px 9px 0 rgba(20,63,51,.09); transition:opacity .28s,transform .28s; }
+.scale-poles { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+.pole { min-width:0; }
+.pole>span { display:flex; align-items:center; gap:7px; color:var(--left-color); font-size:11px; font-weight:800; letter-spacing:.1em; }
+.pole>span i { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:var(--left-color); color:white; font-style:normal; letter-spacing:0; }
+.pole strong { display:block; margin-top:10px; color:var(--forest); font-size:clamp(20px,3vw,27px); line-height:1.25; }
+.pole p { margin:5px 0 0; color:var(--muted); font-size:12px; line-height:1.5; }
+.pole-right { text-align:right; }
+.pole-right>span { justify-content:flex-end; color:var(--right-color); }
+.pole-right>span i { background:var(--right-color); }
+.scale-options { position:relative; margin:31px 0 0; display:grid; grid-template-columns:repeat(7,1fr); align-items:start; }
+.scale-options::before { content:""; position:absolute; left:7%; right:7%; top:22px; height:3px; background:linear-gradient(90deg,var(--left-color),#d8d2c8 48%,#d8d2c8 52%,var(--right-color)); opacity:.42; }
+.scale-option { position:relative; z-index:1; min-width:0; padding:0; display:grid; justify-items:center; gap:8px; border:0; background:transparent; cursor:pointer; }
+.scale-dot { display:grid; place-items:center; width:var(--dot-size); height:var(--dot-size); border:2px solid var(--dot-color); border-radius:50%; background:#fffef9; color:white; font-size:13px; font-weight:900; box-shadow:0 0 0 5px #fffef9; transition:transform .18s,background .18s,box-shadow .18s; }
+.scale-option:nth-child(-n+3) { --dot-color:var(--left-color); }
+.scale-option:nth-child(4) { --dot-color:#8f897f; }
+.scale-option:nth-child(n+5) { --dot-color:var(--right-color); }
+.scale-option.level-3 { --dot-size:46px; }.scale-option.level-2 { --dot-size:38px; }.scale-option.level-1 { --dot-size:31px; }.scale-option.level-0 { --dot-size:24px; }
+.scale-option:hover .scale-dot { transform:scale(1.11); background:color-mix(in srgb,var(--dot-color),white 82%); box-shadow:0 0 0 5px #fffef9,0 8px 18px color-mix(in srgb,var(--dot-color),transparent 70%); }
+.scale-option:active .scale-dot { transform:scale(.94); }
+.scale-option.selected .scale-dot { background:var(--dot-color); transform:scale(1.08); box-shadow:0 0 0 5px #fffef9,0 0 0 8px color-mix(in srgb,var(--dot-color),transparent 70%); animation:check-pop .25s cubic-bezier(.2,.9,.2,1.3); }
+.scale-option.deemphasized { opacity:.3; }
+.scale-option small { min-height:14px; color:#8b867d; font-size:10px; white-space:nowrap; }
+.scale-help { margin:13px 0 0; color:#817b72; text-align:center; font-size:11px; line-height:1.6; }
+
+@media (max-width:760px) {
+  .question-block { margin-top:auto; margin-bottom:18px; padding:22px 20px 25px; }
+  .question-block h2 { margin-top:20px; font-size:24px; line-height:1.5; }
+  .scale-card { padding:23px 15px 18px; border-radius:14px; box-shadow:6px 6px 0 rgba(20,63,51,.09); }
+  .scale-poles { gap:14px; }
+  .pole>span { font-size:10px; letter-spacing:.06em; }.pole>span i { width:21px; height:21px; }
+  .pole strong { margin-top:8px; font-size:18px; }.pole p { font-size:11px; }
+  .scale-options { margin-top:27px; }
+  .scale-options::before { left:6%; right:6%; top:18px; }
+  .scale-option.level-3 { --dot-size:38px; }.scale-option.level-2 { --dot-size:33px; }.scale-option.level-1 { --dot-size:28px; }.scale-option.level-0 { --dot-size:22px; }
+  .scale-option small { font-size:9px; }
+  .scale-help { margin-top:9px; font-size:10px; }
+  .quiz-footer { margin-top:14px; }
+}
