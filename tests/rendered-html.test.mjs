@@ -38,5 +38,6 @@ test("ships the complete interactive assessment", async () => {
   assert.match(page, /修改最后一题/);
   assert.match(page, /const questions: Question\[\]/);
   assert.match(page, /计分规则与使用说明/);
+  assert.doesNotMatch(page, /↗/);
   assert.doesNotMatch(pkg, /react-loading-skeleton/);
 });

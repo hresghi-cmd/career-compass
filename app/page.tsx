@@ -35,7 +35,7 @@ const talents: Record<TalentKey, {
     avoid: "只追求表面速度、不允许质疑，也不使用研究结论的环境",
   },
   connect: {
-    short: "影响", title: "共振推动者", role: "让想法被听见，让人愿意行动", symbol: "↗", color: "#d84d72",
+    short: "影响", title: "共振推动者", role: "让想法被听见，让人愿意行动", symbol: "∞", color: "#d84d72",
     description: "你对人的情绪、现场气氛和表达效果非常敏锐。你能迅速找到共同语言，把复杂想法讲得有感染力，也愿意站出来推动共识。对你而言，工作不只是完成任务，更是让一群人朝同一个方向动起来。",
     traits: "你的能量往往来自互动、反馈与可见的影响。你善于建立关系，却也可能因为太在意回应而消耗自己。真正成熟的影响力，不是让所有人喜欢，而是在理解分歧后仍能清楚表达立场、促成有质量的决定。",
     advice: "把你的沟通天赋和一项硬能力绑定，例如商业判断、内容、销售或组织协作。选择岗位时观察它是否有真实的决策空间和对外连接，而不只是高频开会。为自己保留独处复盘的时间，影响力会更稳。",
@@ -332,10 +332,10 @@ export default function Home() {
           <div className="result-grid">
             <article className="panel score-panel"><div className="panel-heading"><span>01</span><h2>天赋光谱</h2><p>以你的最高倾向为 100%</p></div><div className="bars">{results.ranked.map(({ key, percent }, index) => <div className="bar-row" key={key}><div className="bar-label"><span>{String(index + 1).padStart(2, "0")}</span><strong>{talents[key].short}</strong><em>{percent}%</em></div><div className="bar-track"><span style={{ width: `${percent}%`, backgroundColor: talents[key].color }} /></div></div>)}</div><p className="secondary-note">你的第二天赋是 <strong>{talents[secondary].title}</strong>。它会让你的主型表现得更有个人特色。</p></article>
             <article className="panel analysis-panel"><div className="panel-heading"><span>02</span><h2>你的工作底色</h2></div><div className="analysis-copy"><section><h3>结果解读</h3><p>{winnerInfo.description}</p></section><section><h3>性格与能量</h3><p>{winnerInfo.traits}</p></section><section><h3>具体建议</h3><p>{winnerInfo.advice}</p></section></div></article>
-            <article className="panel path-panel"><div className="panel-heading"><span>03</span><h2>值得探索的方向</h2><p>不是岗位处方，而是你的下一组搜索词</p></div><div className="path-list">{winnerInfo.paths.map((path, index) => <div key={path}><span>{String(index + 1).padStart(2, "0")}</span><strong>{path}</strong><em>↗</em></div>)}</div></article>
+            <article className="panel path-panel"><div className="panel-heading"><span>03</span><h2>值得探索的方向</h2><p>不是岗位处方，而是你的下一组搜索词</p></div><div className="path-list">{winnerInfo.paths.map((path, index) => <div key={path}><span>{String(index + 1).padStart(2, "0")}</span><strong>{path}</strong></div>)}</div></article>
             <article className="panel action-panel"><div className="panel-heading"><span>04</span><h2>7 天微行动</h2></div><p>从上面的方向中挑一个，不急着决定转行。找一位真实从业者，问清楚他一周里最常做的三件事；再用 90 分钟做一个最小体验。你在行动后的能量变化，比任何标签都更接近答案。</p></article>
           </div>
-          <div className="share-card"><div><span>SHARE YOUR COORDINATE</span><h2>把你的坐标发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}<span>↗</span></button></div>
+          <div className="share-card"><div><span>SHARE YOUR COORDINATE</span><h2>把你的坐标发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}</button></div>
           <details className="method"><summary>计分规则与使用说明 <span>＋</span></summary><p>每题比较两种职业倾向：越靠近某一端，该项天赋获得的权重越高；选择中间则两边获得相同权重。18 题让六类天赋都得到同等次数的比较，累计得分后排序。图表以本次最高分为 100% 显示相对强度；它反映的是你的偏好，不代表能力上限，也不等于唯一职业答案。</p></details>
           <footer>CAREER COMPASS · 认识自己，是选择的起点</footer>
         </section>
