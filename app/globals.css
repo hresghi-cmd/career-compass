@@ -25,6 +25,8 @@
   --radius-card: 24px;
   --radius-control: 14px;
   --radius-pill: 999px;
+  --font-ui: "Noto Sans SC Variable", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Noto Serif SC Variable", "Noto Serif SC", "Songti SC", serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,7 +70,8 @@ body {
     radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--accent), transparent 83%), transparent 34rem),
     radial-gradient(circle at 95% 18%, color-mix(in srgb, #8fa1ba, transparent 82%), transparent 31rem),
     linear-gradient(145deg, var(--canvas), var(--canvas-raised));
-  font-family: "Noto Sans SC Variable", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-ui);
+  font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -176,7 +179,7 @@ summary:focus-visible {
   gap: 12px;
   color: var(--on-canvas);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 650;
   letter-spacing: .08em;
 }
 
@@ -276,10 +279,11 @@ summary:focus-visible {
   max-width: 760px;
   margin: 24px 0 22px;
   color: var(--on-canvas);
-  font-size: clamp(54px, 7.1vw, 92px);
-  font-weight: 860;
-  line-height: 1.03;
-  letter-spacing: -.065em;
+  font-size: clamp(52px, 6vw, 78px);
+  font-family: var(--font-display);
+  font-weight: 690;
+  line-height: 1.08;
+  letter-spacing: -.045em;
 }
 
 .cover h1 em {
@@ -324,22 +328,25 @@ summary:focus-visible {
 }
 
 .compass-card {
+  --compass-tilt-x: 5deg;
+  --compass-tilt-y: -6deg;
   position: relative;
   width: min(35vw, 410px);
   aspect-ratio: 1;
-  border: 1px solid var(--canvas-line-strong);
+  border: 1px solid color-mix(in srgb, var(--canvas-line-strong), white 18%);
   border-radius: 50%;
   background:
-    radial-gradient(circle at 33% 24%, rgb(255 255 255 / 19%), transparent 28%),
-    radial-gradient(circle at center, color-mix(in srgb, var(--accent), transparent 87%) 0 10%, transparent 11%),
-    var(--canvas-panel);
+    radial-gradient(circle at 34% 23%, rgb(255 255 255 / 28%), transparent 24%),
+    radial-gradient(circle at center, transparent 0 58%, color-mix(in srgb, var(--accent), transparent 92%) 59% 60%, transparent 61%),
+    radial-gradient(circle, var(--canvas-panel) 0 72%, color-mix(in srgb, var(--canvas-panel), var(--canvas-raised) 30%) 73% 100%);
   box-shadow:
-    0 44px 90px var(--deep-shadow),
-    inset 0 1px 0 rgb(255 255 255 / 26%),
-    inset 0 -36px 58px rgb(0 0 0 / 18%);
-  backdrop-filter: blur(22px) saturate(140%);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
-  transform: rotateX(7deg) rotateY(-8deg);
+    0 38px 76px var(--deep-shadow),
+    0 8px 0 color-mix(in srgb, var(--canvas-raised), var(--accent) 7%),
+    inset 0 2px 1px rgb(255 255 255 / 34%),
+    inset 0 -28px 48px rgb(18 29 48 / 15%);
+  backdrop-filter: blur(24px) saturate(125%);
+  -webkit-backdrop-filter: blur(24px) saturate(125%);
+  transform: rotateX(var(--compass-tilt-x)) rotateY(var(--compass-tilt-y));
   transform-style: preserve-3d;
   animation: compass-float 8s ease-in-out infinite;
 }
@@ -353,15 +360,18 @@ summary:focus-visible {
 }
 
 .compass-card::before {
-  inset: -12px;
-  border: 1px dashed var(--canvas-line);
-  animation: orbit-spin 30s linear infinite;
+  inset: 4.5%;
+  background: repeating-conic-gradient(from -1deg, color-mix(in srgb, var(--on-canvas), transparent 46%) 0deg 1deg, transparent 1deg 7.5deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 81%, #000 82% 88%, transparent 89%);
+  mask: radial-gradient(circle, transparent 0 81%, #000 82% 88%, transparent 89%);
+  opacity: .74;
 }
 
 .compass-card::after {
-  inset: 6%;
+  inset: 11%;
   border: 1px solid var(--canvas-line);
-  box-shadow: inset 0 0 44px color-mix(in srgb, var(--accent), transparent 93%);
+  background: radial-gradient(circle at 35% 22%, rgb(255 255 255 / 14%), transparent 29%);
+  box-shadow: inset 0 0 48px color-mix(in srgb, var(--accent), transparent 94%);
 }
 
 .orbit {
@@ -371,49 +381,78 @@ summary:focus-visible {
 }
 
 .orbit-one {
-  inset: 15%;
-  transform: translateZ(18px);
+  inset: 21%;
+  border-color: color-mix(in srgb, var(--canvas-line-strong), transparent 18%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 8%);
+  transform: translateZ(16px);
 }
 
 .orbit-two {
-  inset: 30%;
-  border-style: dashed;
-  transform: translateZ(34px);
-  animation: orbit-spin 18s linear infinite reverse;
+  inset: 42%;
+  border-color: color-mix(in srgb, var(--accent), transparent 54%);
+  background: color-mix(in srgb, var(--accent), transparent 91%);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent), transparent 74%);
+  transform: translateZ(28px);
 }
 
 .needle {
   position: absolute;
-  width: 4px;
-  height: 56%;
-  left: calc(50% - 2px);
-  top: 22%;
-  z-index: 2;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(to bottom, var(--accent) 0 49%, var(--on-canvas) 50% 100%);
-  box-shadow: 0 7px 16px rgb(0 0 0 / 32%);
-  transform: translateZ(42px) rotate(31deg);
-  transform-origin: center;
+  width: 52%;
+  aspect-ratio: 1;
+  left: 24%;
+  top: 24%;
+  z-index: 4;
+  transform: translateZ(42px) rotate(32deg);
+  transform-origin: 50% 50%;
+  animation: needle-settle 1.35s .18s cubic-bezier(.16, 1, .3, 1) both;
 }
 
+.needle::before,
 .needle::after {
   content: "";
   position: absolute;
-  width: 18px;
-  height: 18px;
-  left: -7px;
-  top: calc(50% - 9px);
-  border: 4px solid var(--canvas);
+  left: 50%;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 7px 8px rgb(12 20 34 / 28%));
+}
+
+.needle::before {
+  width: 18%;
+  height: 50%;
+  top: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent), white 22%), var(--accent) 52%, color-mix(in srgb, var(--accent), black 20%));
+  clip-path: polygon(50% 0, 100% 100%, 50% 82%, 0 100%);
+}
+
+.needle::after {
+  width: 12%;
+  height: 34%;
+  bottom: 16%;
+  background: linear-gradient(90deg, #aeb8c6, #eef2f7 46%, #7a8798);
+  clip-path: polygon(8% 0, 92% 0, 50% 100%);
+}
+
+.needle span {
+  position: absolute;
+  z-index: 2;
+  width: 16%;
+  aspect-ratio: 1;
+  left: 42%;
+  top: 42%;
+  border: 3px solid color-mix(in srgb, var(--canvas), #ffffff 28%);
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 8px 18px rgb(0 0 0 / 34%);
+  background:
+    radial-gradient(circle at 35% 28%, #ffffff 0 8%, transparent 10%),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent), white 22%), color-mix(in srgb, var(--accent), black 18%));
+  box-shadow: 0 7px 18px rgb(12 20 34 / 30%), inset 0 1px 0 rgb(255 255 255 / 45%);
 }
 
 .axis {
   position: absolute;
   z-index: 3;
   color: var(--on-canvas-muted);
-  font: 760 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 670 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: .08em;
 }
 
 .axis-n { left: 50%; top: 7%; }
@@ -482,7 +521,7 @@ summary:focus-visible {
     inset 0 1px 0 rgb(255 255 255 / 36%);
   cursor: pointer;
   font-size: 15px;
-  font-weight: 820;
+  font-weight: 680;
   transition: transform .2s cubic-bezier(.16, 1, .3, 1), box-shadow .2s ease, filter .2s ease;
 }
 
@@ -736,7 +775,7 @@ summary:focus-visible {
   margin: 26px 0 0;
   color: var(--ink);
   font-size: clamp(29px, 4vw, 42px);
-  font-weight: 840;
+  font-weight: 690;
   line-height: 1.38;
   letter-spacing: -.035em;
 }
@@ -825,7 +864,7 @@ summary:focus-visible {
   margin-top: 10px;
   color: var(--ink);
   font-size: clamp(21px, 3vw, 29px);
-  font-weight: 830;
+  font-weight: 700;
   line-height: 1.24;
 }
 
@@ -1136,9 +1175,10 @@ summary:focus-visible {
   margin: 0;
   color: var(--on-canvas);
   font-size: clamp(42px, 6vw, 70px);
-  font-weight: 850;
-  line-height: 1.16;
-  letter-spacing: -.055em;
+  font-family: var(--font-display);
+  font-weight: 680;
+  line-height: 1.2;
+  letter-spacing: -.04em;
 }
 
 .milestone-line {
@@ -1284,9 +1324,10 @@ summary:focus-visible {
   margin: 9px 0 5px;
   color: #f3f6fb;
   font-size: clamp(56px, 7vw, 88px);
-  font-weight: 880;
-  line-height: 1.02;
-  letter-spacing: -.06em;
+  font-family: var(--font-display);
+  font-weight: 690;
+  line-height: 1.08;
+  letter-spacing: -.045em;
 }
 
 .result-role {
@@ -1300,7 +1341,8 @@ summary:focus-visible {
   margin: auto 0 26px;
   color: #f3f6fb;
   font-size: clamp(22px, 3vw, 31px);
-  font-weight: 730;
+  font-family: var(--font-display);
+  font-weight: 580;
   line-height: 1.52;
   letter-spacing: -.025em;
 }
@@ -1352,7 +1394,7 @@ summary:focus-visible {
   margin: 15px 0 18px;
   color: var(--ink);
   font-size: clamp(38px, 4vw, 52px);
-  font-weight: 860;
+  font-weight: 720;
   line-height: 1.05;
   letter-spacing: -.05em;
 }
@@ -1411,7 +1453,7 @@ summary:focus-visible {
   margin: 0;
   color: var(--ink);
   font-size: 30px;
-  font-weight: 850;
+  font-weight: 720;
   line-height: 1.22;
   letter-spacing: -.035em;
 }
@@ -1662,7 +1704,7 @@ summary:focus-visible {
   margin: 10px 0;
   color: var(--on-canvas);
   font-size: 29px;
-  font-weight: 830;
+  font-weight: 720;
   letter-spacing: -.03em;
 }
 
@@ -1782,7 +1824,7 @@ summary:focus-visible {
   }
 
   .cover h1 {
-    font-size: clamp(49px, 7.8vw, 70px);
+    font-size: clamp(48px, 7vw, 64px);
   }
 
   .identity-card {
@@ -1851,8 +1893,9 @@ summary:focus-visible {
 
   .cover h1 {
     margin: 18px 0;
-    font-size: clamp(48px, 14vw, 68px);
-    line-height: 1.02;
+    font-size: clamp(36px, 11vw, 46px);
+    line-height: 1.1;
+    letter-spacing: -.04em;
   }
 
   .lead {
@@ -1867,8 +1910,9 @@ summary:focus-visible {
   }
 
   .compass-card {
+    --compass-tilt-x: 4deg;
+    --compass-tilt-y: -3deg;
     width: min(70vw, 290px);
-    transform: rotateX(6deg) rotateY(-5deg);
   }
 
   .talent-legend {
@@ -1947,7 +1991,7 @@ summary:focus-visible {
 
   .question-block h2 {
     margin-top: 20px;
-    font-size: clamp(24px, 7vw, 30px);
+    font-size: clamp(25px, 7vw, 31px);
     line-height: 1.46;
   }
 
@@ -1967,7 +2011,7 @@ summary:focus-visible {
 
   .pole > span {
     gap: 5px;
-    font-size: 9px;
+    font-size: 10px;
     letter-spacing: .02em;
   }
 
@@ -1982,7 +2026,8 @@ summary:focus-visible {
   }
 
   .pole p {
-    font-size: 10px;
+    font-size: 11px;
+    line-height: 1.55;
   }
 
   .scale-options {
@@ -2016,7 +2061,7 @@ summary:focus-visible {
   }
 
   .scale-option small {
-    font-size: 8px;
+    font-size: 9px;
   }
 
   .scale-readout {
@@ -2025,7 +2070,7 @@ summary:focus-visible {
   }
 
   .scale-help {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .quiz-footer {
@@ -2270,12 +2315,18 @@ summary:focus-visible {
 }
 
 @keyframes compass-float {
-  0%, 100% { transform: rotateX(7deg) rotateY(-8deg) translateY(0); }
-  50% { transform: rotateX(5deg) rotateY(-4deg) translateY(-10px); }
+  0%, 100% { transform: rotateX(var(--compass-tilt-x)) rotateY(var(--compass-tilt-y)) translateY(0); }
+  50% { transform: rotateX(calc(var(--compass-tilt-x) - 1deg)) rotateY(calc(var(--compass-tilt-y) + 1deg)) translateY(-6px); }
 }
 
 @keyframes orbit-spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes needle-settle {
+  0% { opacity: 0; transform: translateZ(42px) rotate(12deg) scale(.92); }
+  62% { opacity: 1; transform: translateZ(42px) rotate(35deg) scale(1.02); }
+  100% { opacity: 1; transform: translateZ(42px) rotate(32deg) scale(1); }
 }
 
 @keyframes question-in {

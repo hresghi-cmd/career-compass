@@ -191,42 +191,55 @@ export default function Home() {
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const context = audioContextRef.current ?? new AudioContextClass();
       audioContextRef.current = context;
-      if (context.state === "suspended") void context.resume();
+      const renderFeedback = () => {
+        const master = context.createGain();
+        const compressor = context.createDynamicsCompressor();
+        master.gain.setValueAtTime(.88, context.currentTime);
+        compressor.threshold.setValueAtTime(-18, context.currentTime);
+        compressor.knee.setValueAtTime(12, context.currentTime);
+        compressor.ratio.setValueAtTime(5, context.currentTime);
+        master.connect(compressor);
+        compressor.connect(context.destination);
 
-      const voice = (frequency: number, delay: number, duration: number, volume: number, type: OscillatorType, pan = 0) => {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        const filter = context.createBiquadFilter();
-        const startAt = context.currentTime + delay;
-        oscillator.type = type;
-        oscillator.frequency.setValueAtTime(frequency, startAt);
-        filter.type = "lowpass";
-        filter.frequency.setValueAtTime(2200, startAt);
-        gain.gain.setValueAtTime(.0001, startAt);
-        gain.gain.exponentialRampToValueAtTime(volume, startAt + .018);
-        gain.gain.exponentialRampToValueAtTime(.0001, startAt + duration);
-        oscillator.connect(filter);
-        filter.connect(gain);
-        if (typeof context.createStereoPanner === "function") {
-          const panner = context.createStereoPanner();
-          panner.pan.setValueAtTime(pan, startAt);
-          gain.connect(panner);
-          panner.connect(context.destination);
-        } else gain.connect(context.destination);
-        oscillator.start(startAt);
-        oscillator.stop(startAt + duration + .02);
+        const voice = (frequency: number, delay: number, duration: number, volume: number, type: OscillatorType, pan = 0) => {
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          const filter = context.createBiquadFilter();
+          const startAt = context.currentTime + delay;
+          oscillator.type = type;
+          oscillator.frequency.setValueAtTime(frequency, startAt);
+          filter.type = "lowpass";
+          filter.frequency.setValueAtTime(3600, startAt);
+          gain.gain.setValueAtTime(.0001, startAt);
+          gain.gain.exponentialRampToValueAtTime(volume, startAt + .012);
+          gain.gain.exponentialRampToValueAtTime(.0001, startAt + duration);
+          oscillator.connect(filter);
+          filter.connect(gain);
+          if (typeof context.createStereoPanner === "function") {
+            const panner = context.createStereoPanner();
+            panner.pan.setValueAtTime(pan, startAt);
+            gain.connect(panner);
+            panner.connect(master);
+          } else gain.connect(master);
+          oscillator.start(startAt);
+          oscillator.stop(startAt + duration + .02);
+        };
+
+        if (kind === "complete") {
+          [523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => {
+            voice(frequency, index * .065, .32, index === 3 ? .075 : .055, index % 2 ? "sine" : "triangle", (index - 1.5) * .1);
+          });
+        } else {
+          const pitch = 560 + position * 46;
+          const pan = (position - 3) / 4;
+          voice(pitch, 0, .13, .068, "triangle", pan);
+          voice(pitch * 1.5, .018, .17, .034, "sine", pan * .55);
+          voice(1280 + position * 28, 0, .052, .018, "sine", pan * .35);
+        }
       };
 
-      if (kind === "complete") {
-        [392, 523.25, 659.25, 783.99].forEach((frequency, index) => {
-          voice(frequency, index * .075, .34, index === 3 ? .045 : .032, index % 2 ? "sine" : "triangle", (index - 1.5) * .12);
-        });
-      } else {
-        const pitch = 280 + position * 34;
-        const pan = (position - 3) / 4;
-        voice(pitch, 0, .16, .027, "triangle", pan);
-        voice(pitch * 1.5, .035, .2, .014, "sine", pan * .6);
-      }
+      if (context.state === "suspended") void context.resume().then(renderFeedback);
+      else renderFeedback();
     } catch { /* Sound is an enhancement; the visual feedback still works. */ }
   };
 
@@ -252,13 +265,13 @@ export default function Home() {
     setTransitioning(true);
     setSelectedChoice(position);
     playFeedback("select", false, position);
-    if ("vibrate" in navigator) navigator.vibrate(position === 0 || position === 6 ? [14, 18, 16] : 18);
+    if ("vibrate" in navigator) navigator.vibrate(position === 0 || position === 6 ? [9, 18, 10] : 10);
     const next = answers.slice(); next[current] = position; next.splice(current + 1); setAnswers(next);
     window.setTimeout(() => {
       if (current === questions.length - 1) {
         setStage("result");
         playFeedback("complete");
-        if ("vibrate" in navigator) navigator.vibrate([22, 34, 42]);
+        if ("vibrate" in navigator) navigator.vibrate([14, 24, 26]);
       }
       else if (current === 5 || current === 11) { setCurrent((value) => value + 1); setStage("milestone"); }
       else setCurrent((value) => value + 1);
@@ -321,7 +334,7 @@ export default function Home() {
             <p className="lead">18 道轻量选择题，不用比较复杂答案。跟着第一感觉，在两种工作方式之间选出更像你的程度。</p>
           </div>
           <div className="compass-wrap">
-            <div className="compass-card" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="needle" /><div className="axis axis-n">N</div><div className="axis axis-e">E</div><div className="axis axis-s">S</div><div className="axis axis-w">W</div></div>
+            <div className="compass-card" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="needle"><span /></div><div className="axis axis-n">N</div><div className="axis axis-e">E</div><div className="axis axis-s">S</div><div className="axis axis-w">W</div></div>
             <div className="talent-legend" aria-label="六类职业天赋">{talentOrder.map((key) => <span key={key} style={{ "--legend-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i>{talents[key].short}</span>)}</div>
           </div>
           <div className="cover-action">
