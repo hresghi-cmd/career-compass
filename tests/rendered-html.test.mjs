@@ -24,7 +24,9 @@ test("renders the career compass shell and finished metadata", async () => {
 
 test("ships the complete interactive assessment", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
   const pkg = await readFile(new URL("../package.json", import.meta.url), "utf8");
+  const fontLicense = await readFile(new URL("../public/licenses/NotoSansSC-OFL.txt", import.meta.url), "utf8");
   assert.match(page, /localStorage\.setItem/);
   assert.match(page, /navigator\.clipboard\.writeText/);
   assert.match(page, /AudioContext/);
@@ -38,6 +40,12 @@ test("ships the complete interactive assessment", async () => {
   assert.match(page, /修改最后一题/);
   assert.match(page, /const questions: Question\[\]/);
   assert.match(page, /计分规则与使用说明/);
+  assert.match(page, /优先探索的具体岗位/);
+  assert.match(page, /先试一步/);
+  assert.match(page, /商务拓展经理/);
+  assert.match(layout, /@fontsource-variable\/noto-sans-sc\/wght\.css/);
+  assert.match(pkg, /@fontsource-variable\/noto-sans-sc/);
+  assert.match(fontLicense, /SIL OPEN FONT LICENSE Version 1\.1/);
   assert.doesNotMatch(page, /↗/);
   assert.doesNotMatch(pkg, /react-loading-skeleton/);
 });

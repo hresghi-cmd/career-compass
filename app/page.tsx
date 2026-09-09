@@ -6,70 +6,95 @@ type TalentKey = "spark" | "insight" | "connect" | "care" | "order" | "venture";
 type Stage = "cover" | "quiz" | "milestone" | "result";
 type Pole = { label: string; detail: string; talent: TalentKey };
 type Question = { scene: string; prompt: string; left: Pole; right: Pole };
+type RoleRecommendation = { title: string; why: string; firstStep: string };
 
 const STORAGE_KEY = "career-compass-progress-v2";
 
 const talents: Record<TalentKey, {
   short: string; title: string; role: string; symbol: string; color: string;
-  description: string; traits: string; advice: string; paths: string[];
+  description: string; traits: string; advice: string; recommendations: RoleRecommendation[];
   quote: string; bestAt: string; avoid: string;
 }> = {
   spark: {
-    short: "创意", title: "灵感造物者", role: "把不存在的东西带到现实", symbol: "✦", color: "#ef6a4c",
+    short: "创意", title: "灵感造物者", role: "把不存在的东西带到现实", symbol: "✦", color: "#c75a43",
     description: "你真正享受的不是照着答案执行，而是从一片空白里找到新的表达。面对模糊任务，你会先捕捉感觉、建立概念，再把零散线索组合成让人眼前一亮的方案。你的优势在于原创、审美与打破惯例。",
     traits: "你对重复和僵化格外敏感，需要一定自主权才能进入最佳状态。别人可能觉得你跳跃，但你的大脑其实在高速连接看似无关的信息。比起被严密管理，你更适合有目标、有反馈、但允许自己选择路径的环境。",
     advice: "别只做“点子很多的人”。为灵感建立稳定的落地节奏：先做最小版本，再用真实反馈迭代。选择岗位时重点观察作品是否可见、表达是否被尊重，以及你能否参与定义问题，而不只是美化已有答案。",
-    paths: ["品牌创意", "内容策划", "产品设计", "新媒体", "体验设计"],
+    recommendations: [
+      { title: "品牌创意策划", why: "需要从模糊目标中提炼概念，并把想法变成可传播的主题与内容。", firstStep: "找 3 份真实品牌策划案，尝试为一个熟悉产品重写创意简报。" },
+      { title: "内容创意与栏目策划", why: "适合持续提出选题、设计表达形式，并通过作品直接观察受众反馈。", firstStep: "围绕一个主题做 3 期小栏目，用完播、收藏或访谈反馈验证。" },
+      { title: "交互或体验设计师", why: "把抽象感受转成具体流程与界面，同时保留试验和打磨的空间。", firstStep: "重做一个常用功能的关键流程，并请 3 个人完成可用性测试。" },
+    ],
     quote: "你不是缺少耐心，只是很难长期住在别人已经画好的格子里。",
     bestAt: "从零定义概念、创造独特表达、把抽象感觉变成可见作品",
     avoid: "只有机械执行、没有表达空间，长期以重复产量衡量价值的环境",
   },
   insight: {
-    short: "洞察", title: "深潜解题者", role: "在复杂里找到真正的关键", symbol: "◎", color: "#7357d3",
+    short: "洞察", title: "深潜解题者", role: "在复杂里找到真正的关键", symbol: "◎", color: "#6658a6",
     description: "你擅长把热闹的问题拆开，找到藏在表象下面的规律。面对未知，你的第一反应不是马上表态，而是搜集证据、建立假设、验证逻辑。越是复杂、需要独立思考的难题，越容易激发你的专注力。",
     traits: "你重视准确胜过速度，也更愿意用扎实判断换取长期可靠。你不一定是最先发言的人，却常能指出被忽略的变量。需要留意的是，追求完整可能让行动推迟，独自思考太久也会错过他人的现场信息。",
     advice: "给分析设置“足够好”的截止线，并练习把结论翻译成别人能执行的下一步。理想岗位应当允许深入、鼓励质疑，也能让研究结果真正进入决策，而不是长期停留在报告里。",
-    paths: ["数据分析", "行业研究", "用户研究", "策略咨询", "技术研发"],
+    recommendations: [
+      { title: "用户研究员", why: "通过访谈、观察和证据找到表面需求背后的真实问题。", firstStep: "围绕一个常用产品访谈 3 位用户，整理共同障碍和一条设计建议。" },
+      { title: "商业或数据分析师", why: "需要拆解复杂指标、验证假设，并把结论转成可执行决策。", firstStep: "选一份公开数据做一页分析，明确问题、证据、结论和下一步。" },
+      { title: "行业研究或策略研究员", why: "长期追踪信息、识别趋势和关键变量，适合深度思考型工作方式。", firstStep: "选择一个行业写 800 字研究备忘录，并让从业者指出遗漏。" },
+    ],
     quote: "你并不慢，你只是习惯先找到那个真正值得回答的问题。",
     bestAt: "拆解复杂问题、发现隐藏规律、用证据支持重要判断",
     avoid: "只追求表面速度、不允许质疑，也不使用研究结论的环境",
   },
   connect: {
-    short: "影响", title: "共振推动者", role: "让想法被听见，让人愿意行动", symbol: "∞", color: "#d84d72",
+    short: "影响", title: "共振推动者", role: "让想法被听见，让人愿意行动", symbol: "∞", color: "#ad4e70",
     description: "你对人的情绪、现场气氛和表达效果非常敏锐。你能迅速找到共同语言，把复杂想法讲得有感染力，也愿意站出来推动共识。对你而言，工作不只是完成任务，更是让一群人朝同一个方向动起来。",
     traits: "你的能量往往来自互动、反馈与可见的影响。你善于建立关系，却也可能因为太在意回应而消耗自己。真正成熟的影响力，不是让所有人喜欢，而是在理解分歧后仍能清楚表达立场、促成有质量的决定。",
     advice: "把你的沟通天赋和一项硬能力绑定，例如商业判断、内容、销售或组织协作。选择岗位时观察它是否有真实的决策空间和对外连接，而不只是高频开会。为自己保留独处复盘的时间，影响力会更稳。",
-    paths: ["市场营销", "商务拓展", "公关传播", "社区运营", "管理培训"],
+    recommendations: [
+      { title: "商务拓展经理", why: "需要快速理解双方诉求、建立信任，并把关系推进成明确合作。", firstStep: "旁听或复盘一次合作沟通，写出双方目标、异议和下一步承诺。" },
+      { title: "品牌公关与传播策划", why: "既要把复杂信息讲清楚，也要判断不同人群会如何理解和回应。", firstStep: "为一个真实项目写媒体口径和 3 类受众版本，请朋友判断是否清楚。" },
+      { title: "社群增长运营", why: "通过持续互动识别共同需求，再组织内容、活动与成员协作。", firstStep: "为一个 20 人小群策划一次活动，用参与率和复访反馈复盘。" },
+    ],
     quote: "你真正擅长的不是说服，而是让不同的人愿意朝同一个方向走。",
     bestAt: "建立信任、翻译复杂观点、聚合资源并推动共识",
     avoid: "高频沟通却没有决策空间，关系消耗大于真实影响的环境",
   },
   care: {
-    short: "助人", title: "成长陪伴者", role: "看见人的需要，托住长期改变", symbol: "◡", color: "#2d8f75",
+    short: "助人", title: "成长陪伴者", role: "看见人的需要，托住长期改变", symbol: "◡", color: "#347867",
     description: "你很容易注意到别人没说出口的困难，也愿意花时间理解一个人的处境。你带来的价值不是抢走问题，而是让对方重新获得力量。看到他人因为你的支持而变好，会给你很深的职业满足感。",
     traits: "你耐心、可靠、重视关系中的信任，通常擅长倾听与因人而异地调整方法。但共情并不等于无限承担。若边界模糊，你容易把别人的情绪和责任都背在自己身上，久而久之会失去职业能量。",
     advice: "练习把善意变成专业方法和清晰边界：明确服务对象、可交付结果与停止条件。适合你的环境应当尊重人的差异，也重视长期效果。选择能看见反馈的工作，会比抽象的“帮助所有人”更有力量。",
-    paths: ["教育培训", "心理与助人", "人力资源", "客户成功", "公共服务"],
+    recommendations: [
+      { title: "学习发展顾问或培训师", why: "需要理解学习者差异，把知识设计成能真正发生改变的过程。", firstStep: "为一个熟悉主题做 20 分钟微课，请 3 位学习者反馈哪里最有帮助。" },
+      { title: "客户成功经理", why: "通过倾听客户处境、协调资源和持续跟进，帮助对方得到真实结果。", firstStep: "研究一个客户成功案例，模拟写出目标、风险、跟进节奏和成功标准。" },
+      { title: "人才发展或员工体验", why: "关注人的成长、组织环境与长期关系，工作成果能被具体观察。", firstStep: "访谈 2 位不同岗位的人，整理他们入职或成长中的关键阻碍。" },
+    ],
     quote: "你的温和不是退让，而是一种让改变能够真正发生的力量。",
     bestAt: "倾听真实需要、建立安全感、陪伴他人跨过困难阶段",
     avoid: "把共情当成无限责任、边界模糊且长期情绪透支的环境",
   },
   order: {
-    short: "秩序", title: "系统建造者", role: "让混乱变得稳定、清楚、可复用", symbol: "▦", color: "#2f6f95",
+    short: "秩序", title: "系统建造者", role: "让混乱变得稳定、清楚、可复用", symbol: "▦", color: "#3d6f8f",
     description: "你天然会留意流程、标准和风险。当别人还在讨论大方向时，你已经开始思考资源怎么排、细节怎么接、结果如何验收。你最大的价值，是把一次性的成功整理成可以持续运转的系统。",
     traits: "你认真、守承诺，面对复杂协作时很有稳定感。你喜欢清楚的边界和可预期的节奏，但并不意味着保守；你更倾向于在理解规则后稳步改进。需要避免因为怕出错而把所有变量都控制得过细。",
     advice: "不要只做团队里默默兜底的人，要把你的流程能力显性化：定义标准、展示改善前后的数据，并推动责任回到正确位置。选择重视运营质量、又允许持续优化的组织，你会越来越不可替代。",
-    paths: ["项目管理", "运营管理", "财务审计", "供应链", "质量与合规"],
+    recommendations: [
+      { title: "项目经理", why: "需要澄清目标、安排资源、控制风险，并让多人协作持续向前。", firstStep: "把一个真实小项目整理成目标、里程碑、负责人和风险清单。" },
+      { title: "运营流程经理", why: "通过标准、数据和复盘减少重复失误，让一次成功变成稳定系统。", firstStep: "挑一个重复流程画出现状，找出 2 个等待点并设计改进方案。" },
+      { title: "质量或合规专员", why: "适合对细节、边界和风险敏感，并愿意把要求转成可执行检查。", firstStep: "找一份公开规范，尝试制作一页检查清单并验证是否易用。" },
+    ],
     quote: "你看见的从来不只是一次任务，而是它下一次如何更稳地发生。",
     bestAt: "建立流程与标准、控制风险、让多人协作稳定运转",
     avoid: "责任边界混乱、长期依赖临时救火又拒绝复盘的环境",
   },
   venture: {
-    short: "行动", title: "开路实践者", role: "先走进现场，再找到可行路径", symbol: "△", color: "#c57a16",
+    short: "行动", title: "开路实践者", role: "先走进现场，再找到可行路径", symbol: "△", color: "#9b6828",
     description: "你习惯通过行动理解世界。面对机会，你愿意先试一小步，在真实反馈里修正方向，而不是等待所有条件齐备。你对变化、挑战和有明确结果的任务更有感觉，也能在压力下快速调动资源。",
     traits: "你务实、果断，喜欢看得见的进展和直接的责任。现场越复杂，你越容易进入状态；但当速度成为惯性，可能忽略必要的复盘或他人的节奏。真正高水平的行动，是既敢下注，也知道何时停下来校准。",
     advice: "为每次快速尝试设定验证指标，行动后留出复盘，让经验沉淀成判断力。适合你的岗位通常目标明确、离结果近，并能接触客户或一线现场。避免长期困在只有审批、没有决定权的位置。",
-    paths: ["创业与业务", "销售管理", "产品运营", "现场工程", "应急与执行"],
+    recommendations: [
+      { title: "产品运营经理", why: "离用户和结果都近，需要快速试验、处理现场问题并根据反馈调整。", firstStep: "为一个产品设计 7 天小实验，写清目标、动作、指标和停止条件。" },
+      { title: "解决方案销售", why: "目标明确、反馈直接，需要在真实客户情境中判断并推动成交。", firstStep: "选择一个产品做 10 分钟需求访谈和方案演示，请对方提出真实异议。" },
+      { title: "创业项目或现场运营负责人", why: "需要在资源有限时快速组合人、信息和行动，对结果直接负责。", firstStep: "组织一次小型线下或线上项目，用预算、时限和复盘检验能量变化。" },
+    ],
     quote: "你不需要看清整条路，真实迈出的第一步就是你的地图。",
     bestAt: "快速试错、现场决策、把不确定变成看得见的进展",
     avoid: "层层审批、离结果太远，只有讨论却不能亲自行动的环境",
@@ -98,7 +123,7 @@ const questions: Question[] = [
 ];
 
 const talentOrder = Object.keys(talents) as TalentKey[];
-const questionAccents = ["#ef6a4c", "#2d8f75", "#7357d3", "#c57a16", "#d84d72", "#2f6f95"];
+const questionAccent = "#3157c8";
 const intensityLabels = ["非常偏向左侧", "比较偏向左侧", "稍微偏向左侧", "两边都符合", "稍微偏向右侧", "比较偏向右侧", "非常偏向右侧"];
 const milestoneCopy = {
   6: { step: "第一段坐标已定位", title: "你处理未知的方式，开始显形。", body: "接下来别考虑哪种答案更理想，只留意：哪一个动作最像没有人要求时，你也会自然去做的事。", mark: "Ⅰ" },
@@ -159,7 +184,6 @@ export default function Home() {
   const winner = results.ranked[0]?.key ?? "spark";
   const winnerInfo = talents[winner];
   const secondary = results.ranked[1]?.key ?? "insight";
-  const questionAccent = questionAccents[current % questionAccents.length];
 
   const playFeedback = (kind: "select" | "complete", force = false, position = 3) => {
     if (!soundOn && !force) return;
@@ -320,7 +344,6 @@ export default function Home() {
           <div className="question-block" key={current} style={{ "--question-accent": questionAccent } as React.CSSProperties}>
             <div className="question-card-top"><div className="question-number">第 {String(current + 1).padStart(2, "0")} 题</div><span>{questions[current].scene}</span></div>
             <h2 id="question-title">{questions[current].prompt}</h2>
-            <div className="question-decoration" aria-hidden="true"><span /><span /><span /></div>
           </div>
           <div key={`scale-${current}`} className={`scale-card ${selectedChoice !== null ? "has-selection" : ""}`} style={{ "--left-color": talents[questions[current].left.talent].color, "--right-color": talents[questions[current].right.talent].color } as React.CSSProperties}>
             <div className="scale-poles">
@@ -365,7 +388,7 @@ export default function Home() {
               <h1 id="result-title">{winnerInfo.title}</h1>
               <p className="result-role">{winnerInfo.role}</p>
               <blockquote>“{winnerInfo.quote}”</blockquote>
-              <div className="result-tags">{winnerInfo.paths.slice(0, 3).map((path) => <span key={path}>{path}</span>)}</div>
+              <div className="result-tags">{winnerInfo.recommendations.map(({ title }) => <span key={title}>{title}</span>)}</div>
               <div className="id-bottom"><span>主天赋 {winnerInfo.short}</span><span>第二天赋 {talents[secondary].short}</span></div>
             </div>
             <aside className="combination-card"><span>你的独特组合</span><h2>{winnerInfo.short} × {talents[secondary].short}</h2><p>你以<strong>{winnerInfo.role}</strong>作为主要驱动力，同时带着“{talents[secondary].role}”的第二视角。这不是两个标签的相加，而是你处理复杂工作时最有辨识度的组合。</p><div><em>最能发挥</em><b>{winnerInfo.bestAt}</b></div><div><em>容易消耗</em><b>{winnerInfo.avoid}</b></div></aside>
@@ -373,7 +396,7 @@ export default function Home() {
           <div className="result-grid">
             <article className="panel score-panel"><div className="panel-heading"><h2>天赋光谱</h2><p>最高倾向作为 100% 参照</p></div><div className="bars">{results.ranked.map(({ key, percent }, index) => <div className="bar-row" key={key} style={{ "--bar-color": talents[key].color, "--score-width": `${percent}%`, "--rank-delay": `${index * 90}ms` } as React.CSSProperties}><div className="bar-label"><span>{String(index + 1).padStart(2, "0")}</span><strong>{talents[key].short}</strong><em>{percent}%</em></div><div className="bar-line"><span /></div></div>)}</div><p className="secondary-note">第二天赋是 <strong>{talents[secondary].title}</strong>。它让你的主型表现得更有个人辨识度。</p></article>
             <article className="panel analysis-panel"><div className="panel-heading"><h2>你的工作底色</h2></div><div className="analysis-copy"><section><h3>结果解读</h3><p>{winnerInfo.description}</p></section><section><h3>性格与能量</h3><p>{winnerInfo.traits}</p></section><section><h3>具体建议</h3><p>{winnerInfo.advice}</p></section></div></article>
-            <article className="panel path-panel"><div className="panel-heading"><h2>值得探索的方向</h2><p>它们不是岗位处方，而是你的下一组搜索词</p></div><div className="path-list">{winnerInfo.paths.map((path, index) => <div key={path} style={{ "--path-delay": `${index * 70}ms` } as React.CSSProperties}><span>{String(index + 1).padStart(2, "0")}</span><strong>{path}</strong></div>)}</div></article>
+            <article className="panel path-panel"><div className="panel-heading"><h2>优先探索的具体岗位</h2><p>先把它们当作访谈和体验清单，再结合你的技能、经历与现实机会判断。</p></div><div className="path-list">{winnerInfo.recommendations.map((item, index) => <div key={item.title} style={{ "--path-delay": `${index * 70}ms` } as React.CSSProperties}><span>{String(index + 1).padStart(2, "0")}</span><section><strong>{item.title}</strong><p>{item.why}</p><small><b>先试一步</b>{item.firstStep}</small></section></div>)}</div></article>
             <article className="panel action-panel"><span className="action-mark" aria-hidden="true">7</span><div className="panel-heading"><h2>7 天微行动</h2></div><p>从上面的方向中挑一个，不急着决定转行。找一位真实从业者，问清楚他一周里最常做的三件事；再用 90 分钟做一个最小体验。你在行动后的能量变化，比任何标签都更接近答案。</p></article>
           </div>
           <div className="share-card"><div><span>分享你的坐标</span><h2>把这份发现发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}</button></div>
