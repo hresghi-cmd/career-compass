@@ -811,6 +811,41 @@ summary:focus-visible {
   align-self: end;
 }
 
+.public-access-card {
+  width: min(410px, 100%);
+  padding: 21px 22px;
+  border: 1px solid var(--canvas-line-strong);
+  border-radius: var(--radius-control);
+  background: var(--canvas-panel);
+  box-shadow: 0 16px 34px rgb(38 54 86 / 10%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.public-access-card > span {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.public-access-card > strong {
+  display: block;
+  color: var(--on-canvas);
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.public-access-card > p {
+  margin: 9px 0 0;
+  color: var(--on-canvas-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .primary-button {
   min-width: 250px;
   min-height: 56px;
@@ -2246,6 +2281,11 @@ summary:focus-visible {
   .cover-action {
     order: 3;
     margin-top: 0;
+  }
+
+  .public-access-card {
+    width: 100%;
+    text-align: left;
   }
 
   .primary-button {

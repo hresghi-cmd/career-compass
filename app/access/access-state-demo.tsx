@@ -130,7 +130,7 @@ function RevokedAccess({ access }: { access: DemoAccess }) {
       <h1 id="access-error-title">测试资格已失效</h1>
       <p>可能是订单已退款、链接被撤销，或地址复制不完整。你的设备和浏览器没有问题。</p>
       <div className="access-help"><strong>需要帮助？</strong><p>请把资格编号 <b>{access.orderReference}</b> 发给购买平台的店铺客服，我们会协助核对。</p></div>
-      <Link href="/" className="access-secondary">返回网站首页</Link>
+      <Link href="/" className="access-secondary">返回产品说明</Link>
     </section>
   );
 }

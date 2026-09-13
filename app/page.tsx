@@ -9,6 +9,7 @@ type Question = { scene: string; prompt: string; left: Pole; right: Pole };
 type RoleRecommendation = { title: string; why: string; firstStep: string };
 
 const STORAGE_KEY = "career-compass-progress-v2";
+const PUBLIC_ENTRY_ONLY = true;
 
 const talents: Record<TalentKey, {
   short: string; title: string; role: string; symbol: string; color: string;
@@ -160,8 +161,9 @@ export default function Home() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
       setSoundOn(localStorage.getItem(`${STORAGE_KEY}-sound`) !== "off");
+      if (PUBLIC_ENTRY_ONLY) return;
+      const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as { answers?: number[]; current?: number };
         if (Array.isArray(parsed.answers) && parsed.answers.length > 0) {
@@ -254,12 +256,6 @@ export default function Home() {
     if (next) playFeedback("select", true);
   };
 
-  const start = () => {
-    playFeedback("select");
-    if (answers.length === questions.length) setStage("result");
-    else { setCurrent(Math.min(answers.length, questions.length - 1)); setStage("quiz"); }
-  };
-
   const choose = (position: number) => {
     if (transitioning) return;
     setTransitioning(true);
@@ -338,9 +334,12 @@ export default function Home() {
             <div className="talent-legend" aria-label="六类职业天赋">{talentOrder.map((key) => <span key={key} style={{ "--legend-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i>{talents[key].short}</span>)}</div>
           </div>
           <div className="cover-action">
-            <button className="primary-button" onClick={start}>{answers.length > 0 ? "继续上次测试" : "开始探索"}<span>→</span></button>
+            <div className="public-access-card" role="note" aria-label="专属测试进入说明">
+              <span>专属测试入口</span>
+              <strong>请打开购买后收到的专属链接</strong>
+              <p>每条有效链接对应一次测试资格。普通首页只介绍测试内容，不能直接开始或重新测试。</p>
+            </div>
             <div className="test-meta"><span>18 题</span><span>约 2 分钟</span><span>7 级倾向</span></div>
-            {answers.length > 0 && <button className="text-button" onClick={reset}>清除进度，重新开始</button>}
           </div>
           <p className="disclaimer">这是一份职业倾向探索工具，不用于招聘筛选或临床诊断。</p>
         </section>

@@ -29,6 +29,9 @@ test("ships the complete interactive assessment", async () => {
   const fontLicense = await readFile(new URL("../public/licenses/NotoSansSC-OFL.txt", import.meta.url), "utf8");
   const displayFontLicense = await readFile(new URL("../public/licenses/NotoSerifSC-OFL.txt", import.meta.url), "utf8");
   assert.match(page, /localStorage\.setItem/);
+  assert.match(page, /const PUBLIC_ENTRY_ONLY = true/);
+  assert.match(page, /请打开购买后收到的专属链接/);
+  assert.doesNotMatch(page, /onClick=\{start\}/);
   assert.match(page, /navigator\.clipboard\.writeText/);
   assert.match(page, /AudioContext/);
   assert.match(page, /navigator\.vibrate/);
@@ -64,6 +67,7 @@ test("defines the four paid-access states and demo routes", async () => {
   }
   assert.match(accessPage, /测试资格有效/);
   assert.match(accessPage, /继续你的探索/);
+  assert.match(accessPage, /返回产品说明/);
   assert.match(notFound, /链接似乎不完整/);
   assert.match(schema, /tokenHash/);
   assert.match(schema, /firstOpenedAt/);
