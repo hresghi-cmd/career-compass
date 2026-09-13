@@ -53,3 +53,25 @@ test("ships the complete interactive assessment", async () => {
   assert.doesNotMatch(page, /↗/);
   assert.doesNotMatch(pkg, /react-loading-skeleton/);
 });
+
+test("defines the four paid-access states and demo routes", async () => {
+  const accessModel = await readFile(new URL("../app/access/demo-access.ts", import.meta.url), "utf8");
+  const accessPage = await readFile(new URL("../app/access/access-state-demo.tsx", import.meta.url), "utf8");
+  const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
+  const notFound = await readFile(new URL("../app/not-found.tsx", import.meta.url), "utf8");
+  for (const state of ["unused", "in_progress", "completed", "revoked"]) {
+    assert.match(accessModel, new RegExp(`status: "${state}"`));
+  }
+  assert.match(accessPage, /测试资格有效/);
+  assert.match(accessPage, /继续你的探索/);
+  assert.match(notFound, /链接似乎不完整/);
+  assert.match(schema, /tokenHash/);
+  assert.match(schema, /firstOpenedAt/);
+  assert.match(schema, /completedAt/);
+  assert.match(schema, /orderReference/);
+  assert.match(accessPage, /这份报告已经锁定/);
+  assert.match(accessPage, /测试资格已失效/);
+  assert.match(schema, /tokenHash/);
+  assert.match(schema, /orderReference/);
+  assert.match(schema, /currentQuestion/);
+});
