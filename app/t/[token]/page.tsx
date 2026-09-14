@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import AccessStateDemo from "../../access/access-state-demo";
+import AccessRoute from "../../access/access-route";
 import { demoAccessRecords, findDemoAccess } from "../../access/demo-access";
 
 export const metadata: Metadata = {
@@ -18,5 +18,5 @@ export default async function AccessPage({ params }: { params: Promise<{ token: 
   const { token } = await params;
   const access = findDemoAccess(token);
   if (!access) notFound();
-  return <AccessStateDemo access={access} />;
+  return <AccessRoute access={access} />;
 }

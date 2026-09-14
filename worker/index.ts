@@ -1,6 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { handleAccessApi } from "./access-api";
 
 interface Env {
   ASSETS: Fetcher;
@@ -28,6 +29,25 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/api/access/")) {
+      if (!env.DB) {
+        return new Response(JSON.stringify({ error: "云端进度服务暂未就绪" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+        });
+      }
+      let token = "";
+      try {
+        token = decodeURIComponent(url.pathname.slice("/api/access/".length));
+      } catch {
+        return new Response(JSON.stringify({ error: "链接格式不正确" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+        });
+      }
+      return handleAccessApi(request, env.DB, token);
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

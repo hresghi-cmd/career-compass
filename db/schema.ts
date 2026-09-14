@@ -1,12 +1,8 @@
-// Intentionally empty by default.
-// Add Drizzle tables here when the site actually needs a database.
-// See examples/d1/db/schema.ts for an opt-in example.
-export {};
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
- * A paid assessment entitlement. Phase 1 only defines the durable contract;
- * later phases will connect these records to the assessment and merchant tools.
+ * A paid assessment entitlement with server-backed draft progress.
+ * Final report locking and merchant tooling are deliberately deferred.
  */
 export const assessmentAccess = sqliteTable("assessment_access", {
   id: text("id").primaryKey(),
@@ -21,6 +17,9 @@ export const assessmentAccess = sqliteTable("assessment_access", {
   orderReference: text("order_reference"),
   merchantNote: text("merchant_note"),
   currentQuestion: integer("current_question").notNull().default(0),
+  answersJson: text("answers_json").notNull().default("[]"),
+  progressVersion: integer("progress_version").notNull().default(0),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
   createdBy: text("created_by").notNull().default("merchant"),
 });
 

@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type TalentKey = "spark" | "insight" | "connect" | "care" | "order" | "venture";
 type Stage = "cover" | "quiz" | "milestone" | "result";
 type Pole = { label: string; detail: string; talent: TalentKey };
 type Question = { scene: string; prompt: string; left: Pole; right: Pole };
 type RoleRecommendation = { title: string; why: string; firstStep: string };
+type SaveStatus = "idle" | "loading" | "saving" | "saved" | "offline" | "conflict" | "error";
+type ProgressSnapshot = { status: string; answers: number[]; current: number; version: number };
+type HomeProps = { accessToken?: string; apiBaseUrl?: string };
 
 const STORAGE_KEY = "career-compass-progress-v2";
-const PUBLIC_ENTRY_ONLY = true;
 
 const talents: Record<TalentKey, {
   short: string; title: string; role: string; symbol: string; color: string;
@@ -146,7 +148,7 @@ function calculateScores(answers: number[]) {
   return { raw, ranked };
 }
 
-export default function Home() {
+export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
   const [stage, setStage] = useState<Stage>("cover");
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
@@ -155,32 +157,131 @@ export default function Home() {
   const [transitioning, setTransitioning] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [soundOn, setSoundOn] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(accessToken ? "loading" : "idle");
+  const [loadError, setLoadError] = useState("");
+  const [conflictProgress, setConflictProgress] = useState<ProgressSnapshot | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const versionRef = useRef(0);
+  const answersRef = useRef<number[]>([]);
+  const currentRef = useRef(0);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const endpoint = accessToken ? `${apiBaseUrl.replace(/\/$/, "")}/api/access/${encodeURIComponent(accessToken)}` : null;
+  const draftKey = accessToken ? `${STORAGE_KEY}:${accessToken}` : null;
 
-  /* Browser progress is intentionally restored once after hydration. */
+  const persistProgress = useCallback((nextAnswers: number[], nextCurrent: number) => {
+    if (!endpoint || !draftKey) return;
+    const safeAnswers = nextAnswers.slice(0, questions.length);
+    const safeCurrent = Math.max(0, Math.min(nextCurrent, questions.length));
+    const saveDraft = (baseVersion: number, pending: boolean) => localStorage.setItem(draftKey, JSON.stringify({
+      answers: safeAnswers,
+      current: safeCurrent,
+      baseVersion,
+      pending,
+    }));
+
+    saveDraft(versionRef.current, true);
+    if (!navigator.onLine) {
+      setSaveStatus("offline");
+      return;
+    }
+
+    setSaveStatus("saving");
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      const baseVersion = versionRef.current;
+      saveDraft(baseVersion, true);
+      const response = await fetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: safeAnswers, current: safeCurrent, baseVersion }),
+      });
+      const payload = await response.json() as { error?: string; progress?: ProgressSnapshot };
+      if (response.status === 409 && payload.progress) {
+        setConflictProgress(payload.progress);
+        setSaveStatus("conflict");
+        return;
+      }
+      if (!response.ok || !payload.progress) throw new Error(payload.error ?? "保存失败");
+      versionRef.current = payload.progress.version;
+      saveDraft(payload.progress.version, false);
+      setConflictProgress(null);
+      setSaveStatus("saved");
+    }).catch(() => {
+      saveDraft(versionRef.current, true);
+      setSaveStatus(navigator.onLine ? "error" : "offline");
+    });
+  }, [draftKey, endpoint]);
+
+  /* The server is authoritative; browser storage only protects an unsent offline choice. */
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    try {
-      setSoundOn(localStorage.getItem(`${STORAGE_KEY}-sound`) !== "off");
-      if (PUBLIC_ENTRY_ONLY) return;
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as { answers?: number[]; current?: number };
-        if (Array.isArray(parsed.answers) && parsed.answers.length > 0) {
-          setAnswers(parsed.answers.slice(0, questions.length));
-          setCurrent(Math.min(parsed.current ?? parsed.answers.length, questions.length - 1));
-          setStage(parsed.answers.length === questions.length ? "result" : "quiz");
+    let cancelled = false;
+    setSoundOn(localStorage.getItem(`${STORAGE_KEY}-sound`) !== "off");
+    if (!endpoint || !draftKey) {
+      setLoaded(true);
+      return () => { cancelled = true; };
+    }
+
+    const loadProgress = async () => {
+      setSaveStatus("loading");
+      try {
+        const response = await fetch(endpoint, { cache: "no-store" });
+        const payload = await response.json() as { error?: string; progress?: ProgressSnapshot };
+        if (!response.ok || !payload.progress) throw new Error(payload.error ?? "暂时无法读取答题进度");
+        if (cancelled) return;
+        const server = payload.progress;
+        versionRef.current = server.version;
+        let nextAnswers = server.answers.slice(0, questions.length);
+        let nextCurrent = Math.max(0, Math.min(server.current, questions.length - 1));
+        let pendingDraft = false;
+
+        try {
+          const rawDraft = localStorage.getItem(draftKey);
+          const draft = rawDraft ? JSON.parse(rawDraft) as { answers?: number[]; current?: number; baseVersion?: number; pending?: boolean } : null;
+          if (draft?.pending && draft.baseVersion === server.version && Array.isArray(draft.answers)) {
+            const validDraft = draft.answers.length <= questions.length && draft.answers.every((answer) => Number.isInteger(answer) && answer >= 0 && answer <= 6);
+            if (validDraft) {
+              nextAnswers = draft.answers;
+              nextCurrent = Math.max(0, Math.min(draft.current ?? draft.answers.length, questions.length - 1));
+              pendingDraft = true;
+            }
+          }
+        } catch { localStorage.removeItem(draftKey); }
+
+        answersRef.current = nextAnswers;
+        currentRef.current = nextCurrent;
+        setAnswers(nextAnswers);
+        setCurrent(nextCurrent);
+        setStage(nextAnswers.length === questions.length ? "result" : nextAnswers.length > 0 || nextCurrent > 0 ? "quiz" : "cover");
+        setSaveStatus(pendingDraft ? "offline" : "saved");
+        if (pendingDraft) persistProgress(nextAnswers, nextCurrent);
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "暂时无法读取答题进度");
+          setSaveStatus("error");
         }
+      } finally {
+        if (!cancelled) setLoaded(true);
       }
-    } catch { localStorage.removeItem(STORAGE_KEY); }
-    finally { setLoaded(true); }
-  }, []);
+    };
+    void loadProgress();
+    return () => { cancelled = true; };
+  }, [draftKey, endpoint, persistProgress]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    if (!loaded || stage === "cover") return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ answers, current }));
-  }, [answers, current, stage, loaded]);
+    answersRef.current = answers;
+    currentRef.current = current;
+  }, [answers, current]);
+
+  useEffect(() => {
+    const retryPending = () => {
+      if (saveStatus === "offline" || saveStatus === "error") {
+        persistProgress(answersRef.current, currentRef.current);
+      }
+    };
+    window.addEventListener("online", retryPending);
+    return () => window.removeEventListener("online", retryPending);
+  }, [persistProgress, saveStatus]);
 
   const results = useMemo(() => calculateScores(answers), [answers]);
   const winner = results.ranked[0]?.key ?? "spark";
@@ -256,6 +357,17 @@ export default function Home() {
     if (next) playFeedback("select", true);
   };
 
+  const start = () => {
+    playFeedback("select");
+    if (answers.length === questions.length) setStage("result");
+    else {
+      const nextCurrent = Math.min(current, questions.length - 1);
+      setCurrent(nextCurrent);
+      setStage("quiz");
+      persistProgress(answers, nextCurrent);
+    }
+  };
+
   const choose = (position: number) => {
     if (transitioning) return;
     setTransitioning(true);
@@ -263,6 +375,10 @@ export default function Home() {
     playFeedback("select", false, position);
     if ("vibrate" in navigator) navigator.vibrate(position === 0 || position === 6 ? [9, 18, 10] : 10);
     const next = answers.slice(); next[current] = position; next.splice(current + 1); setAnswers(next);
+    answersRef.current = next;
+    const nextCurrent = Math.min(current + 1, questions.length);
+    currentRef.current = nextCurrent;
+    persistProgress(next, nextCurrent);
     window.setTimeout(() => {
       if (current === questions.length - 1) {
         setStage("result");
@@ -279,21 +395,69 @@ export default function Home() {
   const goBack = () => {
     setSelectedChoice(null);
     if (stage === "result") {
-      setAnswers((value) => value.slice(0, questions.length - 1));
+      const nextAnswers = answers.slice(0, questions.length - 1);
+      setAnswers(nextAnswers);
       setCurrent(questions.length - 1);
       setStage("quiz");
+      answersRef.current = nextAnswers;
+      currentRef.current = questions.length - 1;
+      persistProgress(nextAnswers, questions.length - 1);
       return;
     }
     if (stage === "milestone") {
-      setAnswers((value) => value.slice(0, Math.max(0, current - 1)));
-      setCurrent((value) => Math.max(0, value - 1));
+      const nextCurrent = Math.max(0, current - 1);
+      const nextAnswers = answers.slice(0, nextCurrent);
+      setAnswers(nextAnswers);
+      setCurrent(nextCurrent);
       setStage("quiz");
+      answersRef.current = nextAnswers;
+      currentRef.current = nextCurrent;
+      persistProgress(nextAnswers, nextCurrent);
       return;
     }
-    if (current === 0) setStage("cover");
-    else setCurrent((value) => value - 1);
+    if (current === 0) {
+      setStage("cover");
+      persistProgress(answers, 0);
+    } else {
+      const nextCurrent = current - 1;
+      setCurrent(nextCurrent);
+      currentRef.current = nextCurrent;
+      persistProgress(answers, nextCurrent);
+    }
   };
-  const reset = () => { localStorage.removeItem(STORAGE_KEY); setAnswers([]); setCurrent(0); setStage("cover"); setCopied(false); setSelectedChoice(null); };
+  const reset = () => {
+    if (draftKey) localStorage.removeItem(draftKey);
+    setAnswers([]);
+    setCurrent(0);
+    setStage("cover");
+    setCopied(false);
+    setSelectedChoice(null);
+    answersRef.current = [];
+    currentRef.current = 0;
+    persistProgress([], 0);
+  };
+
+  const useLatestCloudProgress = () => {
+    if (!conflictProgress) return;
+    const nextAnswers = conflictProgress.answers.slice(0, questions.length);
+    const nextCurrent = Math.max(0, Math.min(conflictProgress.current, questions.length - 1));
+    versionRef.current = conflictProgress.version;
+    answersRef.current = nextAnswers;
+    currentRef.current = nextCurrent;
+    setAnswers(nextAnswers);
+    setCurrent(nextCurrent);
+    setStage(nextAnswers.length === questions.length ? "result" : nextAnswers.length > 0 || nextCurrent > 0 ? "quiz" : "cover");
+    setConflictProgress(null);
+    setSaveStatus("saved");
+    if (draftKey) localStorage.removeItem(draftKey);
+  };
+
+  const keepThisPageProgress = () => {
+    if (!conflictProgress) return;
+    versionRef.current = conflictProgress.version;
+    setConflictProgress(null);
+    persistProgress(answersRef.current, currentRef.current);
+  };
   const shareText = `我的职业天赋主型是「${winnerInfo.title}」，第二天赋是「${talents[secondary].short}」。原来适合我的，不是某一个标准答案，而是一种能发挥天赋的工作方式。来测测你的职业天赋坐标吧！`;
 
   const copyShare = async () => {
@@ -314,13 +478,40 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
+  const saveLabel: Record<SaveStatus, string> = {
+    idle: "",
+    loading: "正在读取云端进度",
+    saving: "正在保存…",
+    saved: "已保存到云端",
+    offline: "网络中断 · 已暂存在本机",
+    conflict: "另一台设备有更新",
+    error: "暂时未能保存",
+  };
+
   if (!loaded) return <main className="app-shell" aria-busy="true" />;
+  if (accessToken && loadError) {
+    return (
+      <main className="access-shell">
+        <div className="ambient ambient-one" aria-hidden="true" />
+        <section className="access-load-error" aria-labelledby="access-load-error-title">
+          <span aria-hidden="true">!</span>
+          <p>没有丢失任何本机答案</p>
+          <h1 id="access-load-error-title">暂时无法读取测试进度</h1>
+          <strong>{loadError}</strong>
+          <button type="button" onClick={() => window.location.reload()}>重新连接</button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className={`app-shell stage-${stage}`}>
       <div className="ambient ambient-one" aria-hidden="true" />
       <div className="ambient ambient-two" aria-hidden="true" />
       <div className="ambient ambient-three" aria-hidden="true" />
+      {accessToken && (stage === "milestone" || stage === "result") && (
+        <div className={`global-save-status save-${saveStatus}`} aria-live="polite">{saveLabel[saveStatus]}</div>
+      )}
       {stage === "cover" && (
         <section className="cover page-enter" aria-labelledby="site-title">
           <nav className="brand-row" aria-label="网站信息"><span className="brand-mark">C</span><span>职业天赋坐标</span><button className="sound-toggle" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span>{soundOn ? "声效开启" : "声效关闭"}</button></nav>
@@ -334,11 +525,19 @@ export default function Home() {
             <div className="talent-legend" aria-label="六类职业天赋">{talentOrder.map((key) => <span key={key} style={{ "--legend-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i>{talents[key].short}</span>)}</div>
           </div>
           <div className="cover-action">
-            <div className="public-access-card" role="note" aria-label="专属测试进入说明">
-              <span>专属测试入口</span>
-              <strong>请打开购买后收到的专属链接</strong>
-              <p>每条有效链接对应一次测试资格。普通首页只介绍测试内容，不能直接开始或重新测试。</p>
-            </div>
+            {accessToken ? (
+              <>
+                <button className="primary-button" onClick={start}>{answers.length > 0 ? "继续这份测试" : "开始探索"}<span>→</span></button>
+                <div className={`cover-save-state save-${saveStatus}`} aria-live="polite">{saveLabel[saveStatus]}</div>
+                {answers.length > 0 && <button className="text-button" onClick={reset}>清除进度，重新开始</button>}
+              </>
+            ) : (
+              <div className="public-access-card" role="note" aria-label="专属测试进入说明">
+                <span>专属测试入口</span>
+                <strong>请打开购买后收到的专属链接</strong>
+                <p>每条有效链接对应一次测试资格。普通首页只介绍测试内容，不能直接开始或重新测试。</p>
+              </div>
+            )}
             <div className="test-meta"><span>18 题</span><span>约 2 分钟</span><span>7 级倾向</span></div>
           </div>
           <p className="disclaimer">这是一份职业倾向探索工具，不用于招聘筛选或临床诊断。</p>
@@ -349,9 +548,11 @@ export default function Home() {
         <section className={`quiz page-enter ${transitioning ? "is-leaving" : ""}`} aria-labelledby="question-title">
           <header className="quiz-header">
             <button className="icon-button" onClick={goBack} aria-label={current === 0 ? "返回首页" : "返回上一题"} title={current === 0 ? "返回首页" : "返回上一题"}>←</button>
-            <div className="progress-wrap"><div className="progress-copy"><span>探索进度</span><strong>{String(current + 1).padStart(2, "0")} / {questions.length}</strong></div><div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={questions.length} aria-valuenow={current + 1}><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div></div>
+            <div className="progress-wrap"><div className="progress-copy"><span>探索进度 <em className={`save-indicator save-${saveStatus}`} aria-live="polite">{saveLabel[saveStatus]}</em></span><strong>{String(current + 1).padStart(2, "0")} / {questions.length}</strong></div><div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={questions.length} aria-valuenow={current + 1}><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div></div>
             <button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button>
           </header>
+          {(saveStatus === "offline" || saveStatus === "error") && <div className={`save-alert save-${saveStatus}`} role="status"><div><strong>{saveStatus === "offline" ? "当前网络已断开" : "刚才的进度还没有传到云端"}</strong><p>你的选择仍保留在这台设备上，联网后会自动继续保存。</p></div><button type="button" onClick={() => persistProgress(answersRef.current, currentRef.current)}>立即重试</button></div>}
+          {saveStatus === "conflict" && conflictProgress && <div className="save-conflict" role="alert"><div><strong>另一台设备已经保存了更新进度</strong><p>为避免旧页面自动覆盖新答案，请选择要继续使用哪一份。</p></div><div><button type="button" onClick={useLatestCloudProgress}>使用云端最新进度</button><button type="button" onClick={keepThisPageProgress}>保留本页进度</button></div></div>}
           <div className="talent-ribbon" aria-hidden="true">{talentOrder.map((key, index) => <span key={key} className={current >= index * 3 ? "lit" : ""} style={{ "--dot-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i><b>{talents[key].short}</b></span>)}</div>
           <div className="question-block" key={current} style={{ "--question-accent": questionAccent } as React.CSSProperties}>
             <div className="question-card-top"><div className="question-number">第 {String(current + 1).padStart(2, "0")} 题</div><span>{questions[current].scene}</span></div>
