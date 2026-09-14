@@ -100,6 +100,9 @@ test("ships the complete interactive assessment", async () => {
   assert.match(page, /普通首页只介绍测试内容，不能直接开始或重新测试/);
   assert.match(page, /onClick=\{start\}/);
   assert.match(page, /已保存到云端/);
+  assert.match(page, /已保存在本机/);
+  assert.match(page, /Mobile-first: render local progress immediately/);
+  assert.doesNotMatch(page, /暂时无法读取测试进度/);
   assert.match(page, /另一台设备已经保存了更新进度/);
   assert.match(page, /navigator\.clipboard\.writeText/);
   assert.match(page, /AudioContext/);

@@ -7,11 +7,37 @@ type Stage = "cover" | "quiz" | "milestone" | "result";
 type Pole = { label: string; detail: string; talent: TalentKey };
 type Question = { scene: string; prompt: string; left: Pole; right: Pole };
 type RoleRecommendation = { title: string; why: string; firstStep: string };
-type SaveStatus = "idle" | "loading" | "saving" | "saved" | "offline" | "conflict" | "error";
+type SaveStatus = "idle" | "loading" | "saving" | "saved" | "local" | "offline" | "conflict";
 type ProgressSnapshot = { status: string; answers: number[]; current: number; version: number };
+type LocalProgressDraft = { answers: number[]; current: number; baseVersion: number; pending: boolean };
 type HomeProps = { accessToken?: string; apiBaseUrl?: string };
 
 const STORAGE_KEY = "career-compass-progress-v2";
+
+function readLocalDraft(key: string): LocalProgressDraft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    const draft = raw ? JSON.parse(raw) as Partial<LocalProgressDraft> : null;
+    if (!draft || !Array.isArray(draft.answers) || draft.answers.length > 18) return null;
+    if (!draft.answers.every((answer) => Number.isInteger(answer) && answer >= 0 && answer <= 6)) return null;
+    if (!Number.isInteger(draft.current) || (draft.current as number) < 0 || (draft.current as number) > 18) return null;
+    if (!Number.isInteger(draft.baseVersion) || (draft.baseVersion as number) < 0) return null;
+    return {
+      answers: draft.answers,
+      current: draft.current as number,
+      baseVersion: draft.baseVersion as number,
+      pending: draft.pending === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalDraft(key: string, draft: LocalProgressDraft) {
+  try {
+    localStorage.setItem(key, JSON.stringify(draft));
+  } catch { /* Some privacy modes block storage; the current page still remains usable. */ }
+}
 
 const talents: Record<TalentKey, {
   short: string; title: string; role: string; symbol: string; color: string;
@@ -158,12 +184,12 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [soundOn, setSoundOn] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(accessToken ? "loading" : "idle");
-  const [loadError, setLoadError] = useState("");
   const [conflictProgress, setConflictProgress] = useState<ProgressSnapshot | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const versionRef = useRef(0);
   const answersRef = useRef<number[]>([]);
   const currentRef = useRef(0);
+  const cloudStateRef = useRef<"checking" | "online" | "unavailable">("checking");
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const endpoint = accessToken ? `${apiBaseUrl.replace(/\/$/, "")}/api/access/${encodeURIComponent(accessToken)}` : null;
   const draftKey = accessToken ? `${STORAGE_KEY}:${accessToken}` : null;
@@ -172,16 +198,20 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     if (!endpoint || !draftKey) return;
     const safeAnswers = nextAnswers.slice(0, questions.length);
     const safeCurrent = Math.max(0, Math.min(nextCurrent, questions.length));
-    const saveDraft = (baseVersion: number, pending: boolean) => localStorage.setItem(draftKey, JSON.stringify({
+    const saveDraft = (baseVersion: number, pending: boolean) => writeLocalDraft(draftKey, {
       answers: safeAnswers,
       current: safeCurrent,
       baseVersion,
       pending,
-    }));
+    });
 
     saveDraft(versionRef.current, true);
     if (!navigator.onLine) {
       setSaveStatus("offline");
+      return;
+    }
+    if (cloudStateRef.current !== "online") {
+      setSaveStatus("local");
       return;
     }
 
@@ -206,61 +236,75 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
       setConflictProgress(null);
       setSaveStatus("saved");
     }).catch(() => {
+      cloudStateRef.current = "unavailable";
       saveDraft(versionRef.current, true);
-      setSaveStatus(navigator.onLine ? "error" : "offline");
+      setSaveStatus(navigator.onLine ? "local" : "offline");
     });
   }, [draftKey, endpoint]);
 
-  /* The server is authoritative; browser storage only protects an unsent offline choice. */
+  /* Mobile-first: render local progress immediately, then upgrade to cloud sync when reachable. */
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     let cancelled = false;
-    setSoundOn(localStorage.getItem(`${STORAGE_KEY}-sound`) !== "off");
+    try { setSoundOn(localStorage.getItem(`${STORAGE_KEY}-sound`) !== "off"); }
+    catch { setSoundOn(true); }
     if (!endpoint || !draftKey) {
       setLoaded(true);
       return () => { cancelled = true; };
     }
 
+    const applyProgress = (nextAnswers: number[], nextCurrent: number) => {
+      const safeAnswers = nextAnswers.slice(0, questions.length);
+      const safeCurrent = Math.max(0, Math.min(nextCurrent, questions.length - 1));
+      answersRef.current = safeAnswers;
+      currentRef.current = safeCurrent;
+      setAnswers(safeAnswers);
+      setCurrent(safeCurrent);
+      setStage(safeAnswers.length === questions.length ? "result" : safeAnswers.length > 0 || safeCurrent > 0 ? "quiz" : "cover");
+    };
+
+    const initialDraft = readLocalDraft(draftKey);
+    if (initialDraft) applyProgress(initialDraft.answers, initialDraft.current);
+    setSaveStatus(initialDraft ? "local" : "loading");
+    setLoaded(true);
+
     const loadProgress = async () => {
-      setSaveStatus("loading");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 3500);
       try {
-        const response = await fetch(endpoint, { cache: "no-store" });
+        const response = await fetch(endpoint, { cache: "no-store", signal: controller.signal });
         const payload = await response.json() as { error?: string; progress?: ProgressSnapshot };
         if (!response.ok || !payload.progress) throw new Error(payload.error ?? "暂时无法读取答题进度");
         if (cancelled) return;
+        cloudStateRef.current = "online";
         const server = payload.progress;
         versionRef.current = server.version;
-        let nextAnswers = server.answers.slice(0, questions.length);
-        let nextCurrent = Math.max(0, Math.min(server.current, questions.length - 1));
-        let pendingDraft = false;
-
-        try {
-          const rawDraft = localStorage.getItem(draftKey);
-          const draft = rawDraft ? JSON.parse(rawDraft) as { answers?: number[]; current?: number; baseVersion?: number; pending?: boolean } : null;
-          if (draft?.pending && draft.baseVersion === server.version && Array.isArray(draft.answers)) {
-            const validDraft = draft.answers.length <= questions.length && draft.answers.every((answer) => Number.isInteger(answer) && answer >= 0 && answer <= 6);
-            if (validDraft) {
-              nextAnswers = draft.answers;
-              nextCurrent = Math.max(0, Math.min(draft.current ?? draft.answers.length, questions.length - 1));
-              pendingDraft = true;
-            }
+        const latestDraft = readLocalDraft(draftKey);
+        if (latestDraft?.pending) {
+          applyProgress(latestDraft.answers, latestDraft.current);
+          if (latestDraft.baseVersion === server.version) {
+            persistProgress(latestDraft.answers, latestDraft.current);
+          } else {
+            setConflictProgress(server);
+            setSaveStatus("conflict");
           }
-        } catch { localStorage.removeItem(draftKey); }
-
-        answersRef.current = nextAnswers;
-        currentRef.current = nextCurrent;
-        setAnswers(nextAnswers);
-        setCurrent(nextCurrent);
-        setStage(nextAnswers.length === questions.length ? "result" : nextAnswers.length > 0 || nextCurrent > 0 ? "quiz" : "cover");
-        setSaveStatus(pendingDraft ? "offline" : "saved");
-        if (pendingDraft) persistProgress(nextAnswers, nextCurrent);
-      } catch (error) {
+        } else {
+          applyProgress(server.answers, server.current);
+          writeLocalDraft(draftKey, {
+            answers: server.answers.slice(0, questions.length),
+            current: server.current,
+            baseVersion: server.version,
+            pending: false,
+          });
+          setSaveStatus("saved");
+        }
+      } catch {
         if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "暂时无法读取答题进度");
-          setSaveStatus("error");
+          cloudStateRef.current = "unavailable";
+          setSaveStatus(navigator.onLine ? "local" : "offline");
         }
       } finally {
-        if (!cancelled) setLoaded(true);
+        window.clearTimeout(timeout);
       }
     };
     void loadProgress();
@@ -275,7 +319,8 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
 
   useEffect(() => {
     const retryPending = () => {
-      if (saveStatus === "offline" || saveStatus === "error") {
+      if (saveStatus === "offline" || saveStatus === "local") {
+        cloudStateRef.current = "online";
         persistProgress(answersRef.current, currentRef.current);
       }
     };
@@ -426,7 +471,10 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     }
   };
   const reset = () => {
-    if (draftKey) localStorage.removeItem(draftKey);
+    if (draftKey) {
+      try { localStorage.removeItem(draftKey); }
+      catch { /* Reset the in-memory assessment even when storage is unavailable. */ }
+    }
     setAnswers([]);
     setCurrent(0);
     setStage("cover");
@@ -449,7 +497,12 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     setStage(nextAnswers.length === questions.length ? "result" : nextAnswers.length > 0 || nextCurrent > 0 ? "quiz" : "cover");
     setConflictProgress(null);
     setSaveStatus("saved");
-    if (draftKey) localStorage.removeItem(draftKey);
+    if (draftKey) writeLocalDraft(draftKey, {
+      answers: nextAnswers,
+      current: conflictProgress.current,
+      baseVersion: conflictProgress.version,
+      pending: false,
+    });
   };
 
   const keepThisPageProgress = () => {
@@ -480,29 +533,15 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
 
   const saveLabel: Record<SaveStatus, string> = {
     idle: "",
-    loading: "正在读取云端进度",
+    loading: "正在连接云端…",
     saving: "正在保存…",
     saved: "已保存到云端",
+    local: "已保存在本机",
     offline: "网络中断 · 已暂存在本机",
     conflict: "另一台设备有更新",
-    error: "暂时未能保存",
   };
 
   if (!loaded) return <main className="app-shell" aria-busy="true" />;
-  if (accessToken && loadError) {
-    return (
-      <main className="access-shell">
-        <div className="ambient ambient-one" aria-hidden="true" />
-        <section className="access-load-error" aria-labelledby="access-load-error-title">
-          <span aria-hidden="true">!</span>
-          <p>没有丢失任何本机答案</p>
-          <h1 id="access-load-error-title">暂时无法读取测试进度</h1>
-          <strong>{loadError}</strong>
-          <button type="button" onClick={() => window.location.reload()}>重新连接</button>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className={`app-shell stage-${stage}`}>
@@ -551,7 +590,7 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
             <div className="progress-wrap"><div className="progress-copy"><span>探索进度 <em className={`save-indicator save-${saveStatus}`} aria-live="polite">{saveLabel[saveStatus]}</em></span><strong>{String(current + 1).padStart(2, "0")} / {questions.length}</strong></div><div className="progress-track" role="progressbar" aria-valuemin={1} aria-valuemax={questions.length} aria-valuenow={current + 1}><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div></div>
             <button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button>
           </header>
-          {(saveStatus === "offline" || saveStatus === "error") && <div className={`save-alert save-${saveStatus}`} role="status"><div><strong>{saveStatus === "offline" ? "当前网络已断开" : "刚才的进度还没有传到云端"}</strong><p>你的选择仍保留在这台设备上，联网后会自动继续保存。</p></div><button type="button" onClick={() => persistProgress(answersRef.current, currentRef.current)}>立即重试</button></div>}
+          {(saveStatus === "offline" || saveStatus === "local") && <div className={`save-alert save-${saveStatus}`} role="status"><div><strong>{saveStatus === "offline" ? "当前网络已断开" : "当前使用手机本机保存"}</strong><p>{saveStatus === "offline" ? "你的选择已经留在这台设备上，恢复网络后仍可继续。" : "你可以正常完成测试并在这台手机继续；请不要清理浏览器数据或更换浏览器。"}</p></div></div>}
           {saveStatus === "conflict" && conflictProgress && <div className="save-conflict" role="alert"><div><strong>另一台设备已经保存了更新进度</strong><p>为避免旧页面自动覆盖新答案，请选择要继续使用哪一份。</p></div><div><button type="button" onClick={useLatestCloudProgress}>使用云端最新进度</button><button type="button" onClick={keepThisPageProgress}>保留本页进度</button></div></div>}
           <div className="talent-ribbon" aria-hidden="true">{talentOrder.map((key, index) => <span key={key} className={current >= index * 3 ? "lit" : ""} style={{ "--dot-color": talents[key].color } as React.CSSProperties}><i>{talents[key].symbol}</i><b>{talents[key].short}</b></span>)}</div>
           <div className="question-block" key={current} style={{ "--question-accent": questionAccent } as React.CSSProperties}>

@@ -992,6 +992,7 @@ summary:focus-visible {
 }
 
 .save-saved { color: color-mix(in srgb, #2e7a62, var(--on-canvas) 22%); }
+.save-local { color: color-mix(in srgb, #3157c8, var(--on-canvas) 25%); }
 .save-saving,
 .save-loading { color: var(--accent); }
 .save-offline,
@@ -1046,6 +1047,11 @@ summary:focus-visible {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.save-alert.save-local {
+  border-color: color-mix(in srgb, var(--accent), transparent 72%);
+  background: color-mix(in srgb, var(--accent), transparent 93%);
 }
 
 .global-save-status {
