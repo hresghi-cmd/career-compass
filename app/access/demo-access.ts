@@ -47,6 +47,15 @@ export const demoAccessRecords = [
     orderReference: "DEMO-0004",
     currentQuestion: 0,
   },
+  {
+    token: "demo-finalize-8k2m4x",
+    status: "unused",
+    createdAt: "2026-09-15T10:00:00+08:00",
+    firstOpenedAt: null,
+    completedAt: null,
+    orderReference: "DEMO-0005",
+    currentQuestion: 0,
+  },
 ] satisfies DemoAccess[];
 
 export function findDemoAccess(token: string) {

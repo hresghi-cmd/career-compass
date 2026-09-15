@@ -38,11 +38,16 @@ function createFakeD1() {
                     status,
                     current_question: currentQuestion,
                     answers_json: answersJson,
+                    scores_json: "{}",
+                    primary_talent: null,
+                    secondary_talent: null,
+                    report_version: null,
                     progress_version: 0,
                     order_reference: orderReference,
                     first_opened_at: firstOpenedAt,
                     updated_at: updatedAt,
                     created_at: createdAt,
+                    completed_at: null,
                   });
                   return { meta: { changes: 1 } };
                 }
@@ -54,6 +59,24 @@ function createFakeD1() {
                 if (!row || row.status !== "unused") return { meta: { changes: 0 } };
                 row.status = "in_progress";
                 row.first_opened_at ??= firstOpenedAt;
+                row.updated_at = updatedAt;
+                return { meta: { changes: 1 } };
+              }
+              if (normalized.includes("SET status = 'completed'")) {
+                const [answersJson, scoresJson, primaryTalent, secondaryTalent, reportVersion, completedAt, updatedAt, tokenHash, baseVersion] = params;
+                const row = rows.get(tokenHash);
+                if (!row || !["unused", "in_progress"].includes(row.status) || row.progress_version !== baseVersion) {
+                  return { meta: { changes: 0 } };
+                }
+                row.status = "completed";
+                row.answers_json = answersJson;
+                row.current_question = 18;
+                row.scores_json = scoresJson;
+                row.primary_talent = primaryTalent;
+                row.secondary_talent = secondaryTalent;
+                row.report_version = reportVersion;
+                row.completed_at = completedAt;
+                row.progress_version += 1;
                 row.updated_at = updatedAt;
                 return { meta: { changes: 1 } };
               }
@@ -113,7 +136,11 @@ test("ships the complete interactive assessment", async () => {
   assert.match(page, /intensityLabels/);
   assert.doesNotMatch(page, /键盘 A \/ B \/ C \/ D/);
   assert.match(page, /返回上一题修改/);
-  assert.match(page, /修改最后一题/);
+  assert.match(page, /返回修改最后一题/);
+  assert.match(page, /确认生成报告/);
+  assert.match(page, /打印 \/ 保存 PDF/);
+  assert.match(page, /不能返回修改答案或重新测试/);
+  assert.doesNotMatch(page, />重新测试</);
   assert.match(page, /const questions: Question\[\]/);
   assert.match(page, /计分规则与使用说明/);
   assert.match(page, /优先探索的具体岗位/);
@@ -150,6 +177,10 @@ test("defines the four paid-access states and demo routes", async () => {
   assert.match(schema, /tokenHash/);
   assert.match(schema, /orderReference/);
   assert.match(schema, /currentQuestion/);
+  assert.match(schema, /scoresJson/);
+  assert.match(schema, /primaryTalent/);
+  assert.match(schema, /secondaryTalent/);
+  assert.match(schema, /reportVersion/);
 });
 
 test("saves paid-link progress in D1 and rejects stale device writes", async () => {
@@ -208,4 +239,63 @@ test("saves paid-link progress in D1 and rejects stale device writes", async () 
     body: JSON.stringify({ answers: [9], current: 1, baseVersion: 1 }),
   }), env, ctx);
   assert.equal(invalid.status, 400);
+});
+
+test("locks one final report and makes repeated completion idempotent", async () => {
+  const worker = await importWorker();
+  const database = createFakeD1();
+  const endpoint = "https://career-compass-2026.hresghi.chatgpt.site/api/access/demo-finalize-8k2m4x";
+  const completeEndpoint = `${endpoint}/complete`;
+  const env = { DB: database };
+  const ctx = { waitUntil() {}, passThroughOnException() {} };
+  const answers = [0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3];
+
+  const opened = await worker.fetch(new Request(endpoint), env, ctx);
+  assert.equal(opened.status, 200);
+
+  const incomplete = await worker.fetch(new Request(completeEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers: answers.slice(0, 17), current: 17, baseVersion: 0 }),
+  }), env, ctx);
+  assert.equal(incomplete.status, 400);
+
+  const completed = await worker.fetch(new Request(completeEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers, current: 18, baseVersion: 0 }),
+  }), env, ctx);
+  assert.equal(completed.status, 200);
+  const locked = (await completed.json()).progress;
+  assert.equal(locked.status, "completed");
+  assert.equal(locked.current, 18);
+  assert.deepEqual(locked.answers, answers);
+  assert.equal(locked.report.reportVersion, "career-report-v1");
+  assert.ok(locked.report.primaryTalent);
+  assert.ok(locked.report.secondaryTalent);
+  assert.equal(Object.keys(locked.report.scores).length, 6);
+
+  const repeated = await worker.fetch(new Request(completeEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers: answers.map(() => 6), current: 18, baseVersion: 0 }),
+  }), env, ctx);
+  assert.equal(repeated.status, 200);
+  const repeatedReport = (await repeated.json()).progress;
+  assert.deepEqual(repeatedReport.answers, answers);
+  assert.deepEqual(repeatedReport.report, locked.report);
+
+  const forbiddenEdit = await worker.fetch(new Request(endpoint, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers: answers.map(() => 6), current: 18, baseVersion: locked.version }),
+  }), env, ctx);
+  assert.equal(forbiddenEdit.status, 409);
+  assert.match((await forbiddenEdit.json()).error, /已经锁定/);
+
+  const reopened = await worker.fetch(new Request(endpoint), env, ctx);
+  const reopenedReport = (await reopened.json()).progress;
+  assert.equal(reopenedReport.status, "completed");
+  assert.deepEqual(reopenedReport.answers, answers);
+  assert.deepEqual(reopenedReport.report, locked.report);
 });

@@ -38,15 +38,21 @@ const worker = {
         });
       }
       let token = "";
+      let action: "progress" | "complete" = "progress";
       try {
-        token = decodeURIComponent(url.pathname.slice("/api/access/".length));
+        let tokenPath = url.pathname.slice("/api/access/".length);
+        if (tokenPath.endsWith("/complete")) {
+          tokenPath = tokenPath.slice(0, -"/complete".length);
+          action = "complete";
+        }
+        token = decodeURIComponent(tokenPath);
       } catch {
         return new Response(JSON.stringify({ error: "链接格式不正确" }), {
           status: 404,
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
         });
       }
-      return handleAccessApi(request, env.DB, token);
+      return handleAccessApi(request, env.DB, token, action);
     }
 
     if (url.pathname === "/_vinext/image") {

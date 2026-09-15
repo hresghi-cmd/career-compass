@@ -1,18 +1,50 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  calculateAssessmentReport,
+  isTalentKey,
+  rankAssessmentScores,
+  type AssessmentReport,
+  type TalentKey,
+} from "../lib/assessment-scoring";
 
-type TalentKey = "spark" | "insight" | "connect" | "care" | "order" | "venture";
-type Stage = "cover" | "quiz" | "milestone" | "result";
+type Stage = "cover" | "quiz" | "milestone" | "confirm" | "result";
 type Pole = { label: string; detail: string; talent: TalentKey };
 type Question = { scene: string; prompt: string; left: Pole; right: Pole };
 type RoleRecommendation = { title: string; why: string; firstStep: string };
-type SaveStatus = "idle" | "loading" | "saving" | "saved" | "local" | "offline" | "conflict";
-type ProgressSnapshot = { status: string; answers: number[]; current: number; version: number };
-type LocalProgressDraft = { answers: number[]; current: number; baseVersion: number; pending: boolean };
+type SaveStatus = "idle" | "loading" | "saving" | "saved" | "local" | "offline" | "conflict" | "locking" | "locked";
+type ProgressSnapshot = {
+  status: string;
+  answers: number[];
+  current: number;
+  version: number;
+  completedAt?: number | null;
+  report?: AssessmentReport | null;
+};
+type LocalProgressDraft = {
+  answers: number[];
+  current: number;
+  baseVersion: number;
+  pending: boolean;
+  completed?: boolean;
+  completionPending?: boolean;
+  report?: AssessmentReport | null;
+};
 type HomeProps = { accessToken?: string; apiBaseUrl?: string };
 
 const STORAGE_KEY = "career-compass-progress-v2";
+
+function validReport(value: unknown): value is AssessmentReport {
+  if (!value || typeof value !== "object") return false;
+  const report = value as Partial<AssessmentReport>;
+  const keys: TalentKey[] = ["spark", "insight", "connect", "care", "order", "venture"];
+  return isTalentKey(report.primaryTalent)
+    && isTalentKey(report.secondaryTalent)
+    && typeof report.reportVersion === "string"
+    && !!report.scores
+    && keys.every((key) => Number.isFinite(report.scores?.[key]));
+}
 
 function readLocalDraft(key: string): LocalProgressDraft | null {
   try {
@@ -27,6 +59,9 @@ function readLocalDraft(key: string): LocalProgressDraft | null {
       current: draft.current as number,
       baseVersion: draft.baseVersion as number,
       pending: draft.pending === true,
+      completed: draft.completed === true,
+      completionPending: draft.completionPending === true,
+      report: validReport(draft.report) ? draft.report : null,
     };
   } catch {
     return null;
@@ -159,21 +194,6 @@ const milestoneCopy = {
   12: { step: "第二段坐标已定位", title: "你的优势，不只是一项技能。", body: "它更像一种稳定的工作姿态。最后 6 个场景会观察你在选择、压力与长期成长中的真实偏好。", mark: "Ⅱ" },
 };
 
-function calculateScores(answers: number[]) {
-  const raw = Object.fromEntries(Object.keys(talents).map((key) => [key, 0])) as Record<TalentKey, number>;
-  answers.forEach((position, questionIndex) => {
-    const question = questions[questionIndex];
-    if (!question || position < 0 || position > 6) return;
-    raw[question.left.talent] += 6 - position;
-    raw[question.right.talent] += position;
-  });
-  const max = Math.max(...Object.values(raw), 1);
-  const ranked = (Object.keys(raw) as TalentKey[])
-    .map((key) => ({ key, raw: raw[key], percent: Math.round((raw[key] / max) * 100) }))
-    .sort((a, b) => b.raw - a.raw);
-  return { raw, ranked };
-}
-
 export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
   const [stage, setStage] = useState<Stage>("cover");
   const [current, setCurrent] = useState(0);
@@ -185,17 +205,64 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
   const [soundOn, setSoundOn] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(accessToken ? "loading" : "idle");
   const [conflictProgress, setConflictProgress] = useState<ProgressSnapshot | null>(null);
+  const [lockedReport, setLockedReport] = useState<AssessmentReport | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const versionRef = useRef(0);
   const answersRef = useRef<number[]>([]);
   const currentRef = useRef(0);
+  const lockedRef = useRef(false);
+  const completionSyncRef = useRef(false);
   const cloudStateRef = useRef<"checking" | "online" | "unavailable">("checking");
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const endpoint = accessToken ? `${apiBaseUrl.replace(/\/$/, "")}/api/access/${encodeURIComponent(accessToken)}` : null;
   const draftKey = accessToken ? `${STORAGE_KEY}:${accessToken}` : null;
 
+  const storeLockedReport = useCallback((
+    finalAnswers: number[],
+    report: AssessmentReport,
+    version: number,
+    completionPending: boolean,
+  ) => {
+    const safeAnswers = finalAnswers.slice(0, questions.length);
+    lockedRef.current = true;
+    answersRef.current = safeAnswers;
+    currentRef.current = questions.length;
+    versionRef.current = version;
+    setAnswers(safeAnswers);
+    setCurrent(questions.length - 1);
+    setLockedReport(report);
+    setConflictProgress(null);
+    setStage("result");
+    setSaveStatus(completionPending ? (navigator.onLine ? "local" : "offline") : "locked");
+    if (draftKey) writeLocalDraft(draftKey, {
+      answers: safeAnswers,
+      current: questions.length,
+      baseVersion: version,
+      pending: false,
+      completed: true,
+      completionPending,
+      report,
+    });
+  }, [draftKey]);
+
+  const submitCompletion = useCallback(async (finalAnswers: number[], baseVersion: number) => {
+    if (!endpoint) throw new Error("没有可用的报告服务");
+    const response = await fetch(`${endpoint}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answers: finalAnswers.slice(0, questions.length), current: questions.length, baseVersion }),
+    });
+    const payload = await response.json() as { error?: string; progress?: ProgressSnapshot };
+    if (!response.ok || !payload.progress?.report || payload.progress.status !== "completed") {
+      throw new Error(payload.error ?? "暂时无法生成报告");
+    }
+    return payload.progress;
+  }, [endpoint]);
+
   const persistProgress = useCallback((nextAnswers: number[], nextCurrent: number) => {
     if (!endpoint || !draftKey) return;
+    if (lockedRef.current) return;
     const safeAnswers = nextAnswers.slice(0, questions.length);
     const safeCurrent = Math.max(0, Math.min(nextCurrent, questions.length));
     const saveDraft = (baseVersion: number, pending: boolean) => writeLocalDraft(draftKey, {
@@ -256,16 +323,22 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     const applyProgress = (nextAnswers: number[], nextCurrent: number) => {
       const safeAnswers = nextAnswers.slice(0, questions.length);
       const safeCurrent = Math.max(0, Math.min(nextCurrent, questions.length - 1));
+      lockedRef.current = false;
       answersRef.current = safeAnswers;
       currentRef.current = safeCurrent;
       setAnswers(safeAnswers);
       setCurrent(safeCurrent);
-      setStage(safeAnswers.length === questions.length ? "result" : safeAnswers.length > 0 || safeCurrent > 0 ? "quiz" : "cover");
+      setLockedReport(null);
+      setStage(safeAnswers.length === questions.length ? "confirm" : safeAnswers.length > 0 || safeCurrent > 0 ? "quiz" : "cover");
     };
 
     const initialDraft = readLocalDraft(draftKey);
-    if (initialDraft) applyProgress(initialDraft.answers, initialDraft.current);
-    setSaveStatus(initialDraft ? "local" : "loading");
+    if (initialDraft?.completed && initialDraft.report) {
+      storeLockedReport(initialDraft.answers, initialDraft.report, initialDraft.baseVersion, initialDraft.completionPending === true);
+    } else if (initialDraft) {
+      applyProgress(initialDraft.answers, initialDraft.current);
+      setSaveStatus("local");
+    } else setSaveStatus("loading");
     setLoaded(true);
 
     const loadProgress = async () => {
@@ -280,7 +353,16 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
         const server = payload.progress;
         versionRef.current = server.version;
         const latestDraft = readLocalDraft(draftKey);
-        if (latestDraft?.pending) {
+        if (server.status === "completed" && server.report) {
+          storeLockedReport(server.answers, server.report, server.version, false);
+        } else if (latestDraft?.completed && latestDraft.report) {
+          try {
+            const completed = await submitCompletion(latestDraft.answers, server.version);
+            if (!cancelled && completed.report) storeLockedReport(completed.answers, completed.report, completed.version, false);
+          } catch {
+            if (!cancelled) storeLockedReport(latestDraft.answers, latestDraft.report, server.version, true);
+          }
+        } else if (latestDraft?.pending) {
           applyProgress(latestDraft.answers, latestDraft.current);
           if (latestDraft.baseVersion === server.version) {
             persistProgress(latestDraft.answers, latestDraft.current);
@@ -309,7 +391,7 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     };
     void loadProgress();
     return () => { cancelled = true; };
-  }, [draftKey, endpoint, persistProgress]);
+  }, [draftKey, endpoint, persistProgress, storeLockedReport, submitCompletion]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -318,7 +400,26 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
   }, [answers, current]);
 
   useEffect(() => {
-    const retryPending = () => {
+    const retryPending = async () => {
+      const draft = draftKey ? readLocalDraft(draftKey) : null;
+      if (draft?.completed && draft.completionPending && draft.report && !completionSyncRef.current && endpoint) {
+        completionSyncRef.current = true;
+        try {
+          const response = await fetch(endpoint, { cache: "no-store" });
+          const payload = await response.json() as { progress?: ProgressSnapshot };
+          if (!response.ok || !payload.progress) throw new Error("无法读取云端状态");
+          cloudStateRef.current = "online";
+          const completed = payload.progress.status === "completed" && payload.progress.report
+            ? payload.progress
+            : await submitCompletion(draft.answers, payload.progress.version);
+          if (completed.report) storeLockedReport(completed.answers, completed.report, completed.version, false);
+        } catch {
+          setSaveStatus(navigator.onLine ? "local" : "offline");
+        } finally {
+          completionSyncRef.current = false;
+        }
+        return;
+      }
       if (saveStatus === "offline" || saveStatus === "local") {
         cloudStateRef.current = "online";
         persistProgress(answersRef.current, currentRef.current);
@@ -326,12 +427,16 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     };
     window.addEventListener("online", retryPending);
     return () => window.removeEventListener("online", retryPending);
-  }, [persistProgress, saveStatus]);
+  }, [draftKey, endpoint, persistProgress, saveStatus, storeLockedReport, submitCompletion]);
 
-  const results = useMemo(() => calculateScores(answers), [answers]);
-  const winner = results.ranked[0]?.key ?? "spark";
+  const calculatedReport = useMemo(() => calculateAssessmentReport(answers), [answers]);
+  const results = useMemo(() => ({
+    raw: lockedReport?.scores ?? calculatedReport.scores,
+    ranked: rankAssessmentScores(lockedReport?.scores ?? calculatedReport.scores),
+  }), [calculatedReport, lockedReport]);
+  const winner = lockedReport?.primaryTalent ?? calculatedReport.primaryTalent;
   const winnerInfo = talents[winner];
-  const secondary = results.ranked[1]?.key ?? "insight";
+  const secondary = lockedReport?.secondaryTalent ?? calculatedReport.secondaryTalent;
 
   const playFeedback = (kind: "select" | "complete", force = false, position = 3) => {
     if (!soundOn && !force) return;
@@ -404,7 +509,8 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
 
   const start = () => {
     playFeedback("select");
-    if (answers.length === questions.length) setStage("result");
+    if (lockedRef.current) setStage("result");
+    else if (answers.length === questions.length) setStage("confirm");
     else {
       const nextCurrent = Math.min(current, questions.length - 1);
       setCurrent(nextCurrent);
@@ -426,9 +532,7 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     persistProgress(next, nextCurrent);
     window.setTimeout(() => {
       if (current === questions.length - 1) {
-        setStage("result");
-        playFeedback("complete");
-        if ("vibrate" in navigator) navigator.vibrate([14, 24, 26]);
+        setStage("confirm");
       }
       else if (current === 5 || current === 11) { setCurrent((value) => value + 1); setStage("milestone"); }
       else setCurrent((value) => value + 1);
@@ -439,6 +543,14 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
 
   const goBack = () => {
     setSelectedChoice(null);
+    if (lockedRef.current) return;
+    if (stage === "confirm") {
+      setCurrent(questions.length - 1);
+      currentRef.current = questions.length - 1;
+      setStage("quiz");
+      persistProgress(answers, questions.length - 1);
+      return;
+    }
     if (stage === "result") {
       const nextAnswers = answers.slice(0, questions.length - 1);
       setAnswers(nextAnswers);
@@ -471,6 +583,7 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     }
   };
   const reset = () => {
+    if (lockedRef.current) return;
     if (draftKey) {
       try { localStorage.removeItem(draftKey); }
       catch { /* Reset the in-memory assessment even when storage is unavailable. */ }
@@ -494,7 +607,11 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     currentRef.current = nextCurrent;
     setAnswers(nextAnswers);
     setCurrent(nextCurrent);
-    setStage(nextAnswers.length === questions.length ? "result" : nextAnswers.length > 0 || nextCurrent > 0 ? "quiz" : "cover");
+    if (conflictProgress.status === "completed" && conflictProgress.report) {
+      storeLockedReport(nextAnswers, conflictProgress.report, conflictProgress.version, false);
+      return;
+    }
+    setStage(nextAnswers.length === questions.length ? "confirm" : nextAnswers.length > 0 || nextCurrent > 0 ? "quiz" : "cover");
     setConflictProgress(null);
     setSaveStatus("saved");
     if (draftKey) writeLocalDraft(draftKey, {
@@ -511,6 +628,30 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     setConflictProgress(null);
     persistProgress(answersRef.current, currentRef.current);
   };
+
+  const finalizeReport = async () => {
+    if (finalizing || lockedRef.current || answers.length !== questions.length) return;
+    const localReport = calculateAssessmentReport(answers);
+    setFinalizing(true);
+    setSaveStatus("locking");
+    try {
+      if (!endpoint || !navigator.onLine || cloudStateRef.current !== "online") {
+        throw new Error("云端当前不可达");
+      }
+      await saveQueueRef.current;
+      const completed = await submitCompletion(answers, versionRef.current);
+      if (!completed.report) throw new Error("报告内容不完整");
+      storeLockedReport(completed.answers, completed.report, completed.version, false);
+    } catch {
+      storeLockedReport(answers, localReport, versionRef.current, true);
+    } finally {
+      setFinalizing(false);
+      playFeedback("complete");
+      if ("vibrate" in navigator) navigator.vibrate([14, 24, 26]);
+    }
+  };
+
+  const printReport = () => window.print();
   const shareText = `我的职业天赋主型是「${winnerInfo.title}」，第二天赋是「${talents[secondary].short}」。原来适合我的，不是某一个标准答案，而是一种能发挥天赋的工作方式。来测测你的职业天赋坐标吧！`;
 
   const copyShare = async () => {
@@ -539,6 +680,8 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     local: "已保存在本机",
     offline: "网络中断 · 已暂存在本机",
     conflict: "另一台设备有更新",
+    locking: "正在锁定报告…",
+    locked: "报告已安全锁定",
   };
 
   if (!loaded) return <main className="app-shell" aria-busy="true" />;
@@ -548,7 +691,7 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
       <div className="ambient ambient-one" aria-hidden="true" />
       <div className="ambient ambient-two" aria-hidden="true" />
       <div className="ambient ambient-three" aria-hidden="true" />
-      {accessToken && (stage === "milestone" || stage === "result") && (
+      {accessToken && (stage === "milestone" || stage === "confirm" || stage === "result") && (
         <div className={`global-save-status save-${saveStatus}`} aria-live="polite">{saveLabel[saveStatus]}</div>
       )}
       {stage === "cover" && (
@@ -629,9 +772,31 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
         </section>
       )}
 
+      {stage === "confirm" && (
+        <section className="confirm page-enter" aria-labelledby="confirm-title">
+          <div className="confirm-card">
+            <div className="confirm-seal" aria-hidden="true"><span>18</span><i>题已完成</i></div>
+            <p className="confirm-kicker">生成报告前，请最后确认</p>
+            <h1 id="confirm-title">把这组答案定格为<br /><em>你的职业天赋报告</em></h1>
+            <p className="confirm-lead">确认后，这条专属链接会固定为这一份结果。你以后仍可用原链接查看和保存报告，但不能返回修改答案或重新测试。</p>
+            <div className="confirm-points" role="list">
+              <div role="listitem"><span>01</span><p><strong>答案将被锁定</strong>18 道选择会作为本次报告的最终依据。</p></div>
+              <div role="listitem"><span>02</span><p><strong>原链接继续有效</strong>关闭页面后，再打开仍会回到同一份报告。</p></div>
+              <div role="listitem"><span>03</span><p><strong>提交只生效一次</strong>重复点击不会产生第二份报告。</p></div>
+            </div>
+            <div className="confirm-actions">
+              <button className="primary-button" onClick={finalizeReport} disabled={finalizing}>{finalizing ? "正在生成报告…" : "确认生成报告"}<span>{finalizing ? "" : "→"}</span></button>
+              <button className="back-button" onClick={goBack} disabled={finalizing}>← 返回修改最后一题</button>
+            </div>
+            <p className="confirm-footnote">请在确认前检查答案；报告生成后将不再提供“重新测试”。</p>
+          </div>
+        </section>
+      )}
+
       {stage === "result" && (
         <section className="result page-enter" aria-labelledby="result-title" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
-          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button><button className="result-back-button" onClick={goBack}>← 修改最后一题</button><button className="text-button" onClick={reset}>重新测试</button></header>
+          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact screen-only" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button><button className="report-save-button screen-only" onClick={printReport}>打印 / 保存 PDF</button></header>
+          {accessToken && <div className={`report-lock-note ${saveStatus === "locked" ? "is-cloud" : "is-local"}`} role="status"><span aria-hidden="true">{saveStatus === "locked" ? "✓" : "↻"}</span><div><strong>{saveStatus === "locked" ? "这份报告已安全锁定" : "这份报告已在当前设备锁定"}</strong><p>{saveStatus === "locked" ? "再次打开原专属链接，仍会看到同一份只读报告。" : "当前手机无法连接报告服务器；结果不会在本机被重做，网络恢复后会自动尝试同步。"}</p></div></div>}
           <div className="result-hero">
             <div className="identity-card">
               <div className="id-top"><span>职业天赋坐标</span><span>完成 18 个场景</span></div>
