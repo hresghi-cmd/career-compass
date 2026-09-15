@@ -14,6 +14,7 @@ type Pole = { label: string; detail: string; talent: TalentKey };
 type Question = { scene: string; prompt: string; left: Pole; right: Pole };
 type RoleRecommendation = { title: string; why: string; firstStep: string };
 type SaveStatus = "idle" | "loading" | "saving" | "saved" | "local" | "offline" | "conflict" | "locking" | "locked";
+type PdfStatus = "idle" | "rendering" | "ready" | "shared" | "error";
 type ProgressSnapshot = {
   status: string;
   answers: number[];
@@ -207,7 +208,11 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
   const [conflictProgress, setConflictProgress] = useState<ProgressSnapshot | null>(null);
   const [lockedReport, setLockedReport] = useState<AssessmentReport | null>(null);
   const [finalizing, setFinalizing] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState<PdfStatus>("idle");
+  const [pdfMessage, setPdfMessage] = useState("");
+  const [pdfDownload, setPdfDownload] = useState<{ url: string; filename: string } | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const reportRef = useRef<HTMLElement | null>(null);
   const versionRef = useRef(0);
   const answersRef = useRef<number[]>([]);
   const currentRef = useRef(0);
@@ -651,7 +656,46 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
     }
   };
 
-  const printReport = () => window.print();
+  const saveReportPdf = async () => {
+    if (!reportRef.current || pdfStatus === "rendering") return;
+    setPdfStatus("rendering");
+    setPdfMessage("正在把完整报告排版成 PDF，请稍候…");
+    try {
+      const { createReportPdf } = await import("../lib/report-pdf");
+      const result = await createReportPdf(reportRef.current, winnerInfo.title);
+      if (pdfDownload) URL.revokeObjectURL(pdfDownload.url);
+      const url = URL.createObjectURL(result.blob);
+      setPdfDownload({ url, filename: result.filename });
+
+      const file = new File([result.blob], result.filename, { type: "application/pdf" });
+      const mobileShare = typeof navigator.share === "function"
+        && typeof navigator.canShare === "function"
+        && navigator.canShare({ files: [file] });
+      if (mobileShare) {
+        try {
+          await navigator.share({ files: [file], title: result.filename });
+          setPdfStatus("shared");
+          setPdfMessage(`PDF 已生成，共 ${result.pageCount} 页。你可以继续使用下方按钮再次下载。`);
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name !== "AbortError") throw error;
+        }
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = result.filename;
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      setPdfStatus("ready");
+      setPdfMessage(`PDF 已生成，共 ${result.pageCount} 页。如果没有自动下载，请点“下载已生成的 PDF”。`);
+    } catch (error) {
+      setPdfStatus("error");
+      setPdfMessage(error instanceof Error ? `生成失败：${error.message}` : "生成失败，请稍后重试。");
+    }
+  };
   const shareText = `我的职业天赋主型是「${winnerInfo.title}」，第二天赋是「${talents[secondary].short}」。原来适合我的，不是某一个标准答案，而是一种能发挥天赋的工作方式。来测测你的职业天赋坐标吧！`;
 
   const copyShare = async () => {
@@ -794,9 +838,13 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
       )}
 
       {stage === "result" && (
-        <section className="result page-enter" aria-labelledby="result-title" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
-          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button className="sound-toggle compact screen-only" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button><button className="report-save-button screen-only" onClick={printReport}>打印 / 保存 PDF</button></header>
-          {accessToken && <div className={`report-lock-note ${saveStatus === "locked" ? "is-cloud" : "is-local"}`} role="status"><span aria-hidden="true">{saveStatus === "locked" ? "✓" : "↻"}</span><div><strong>{saveStatus === "locked" ? "这份报告已安全锁定" : "这份报告已在当前设备锁定"}</strong><p>{saveStatus === "locked" ? "再次打开原专属链接，仍会看到同一份只读报告。" : "当前手机无法连接报告服务器；结果不会在本机被重做，网络恢复后会自动尝试同步。"}</p></div></div>}
+        <section ref={reportRef} data-pdf-report className="result page-enter" aria-labelledby="result-title" style={{ "--talent-color": winnerInfo.color } as React.CSSProperties}>
+          <header className="result-topbar"><span className="brand-mark small">C</span><span>你的职业天赋报告</span><button data-pdf-exclude className="sound-toggle compact screen-only" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "关闭答题音效" : "开启答题音效"}><span aria-hidden="true">{soundOn ? "♪" : "×"}</span></button><button data-pdf-exclude className="report-save-button screen-only" onClick={saveReportPdf} disabled={pdfStatus === "rendering"}>{pdfStatus === "rendering" ? "正在生成 PDF…" : "生成并保存 PDF"}</button></header>
+          <div data-pdf-exclude className="pdf-download-area screen-only" aria-live="polite">
+            {pdfMessage && <p className={`pdf-message is-${pdfStatus}`}>{pdfMessage}</p>}
+            {pdfDownload && <a className="pdf-download-link" href={pdfDownload.url} download={pdfDownload.filename}>下载已生成的 PDF</a>}
+          </div>
+          {accessToken && <div data-pdf-exclude className={`report-lock-note ${saveStatus === "locked" ? "is-cloud" : "is-local"}`} role="status"><span aria-hidden="true">{saveStatus === "locked" ? "✓" : "↻"}</span><div><strong>{saveStatus === "locked" ? "这份报告已安全锁定" : "这份报告已在当前设备锁定"}</strong><p>{saveStatus === "locked" ? "再次打开原专属链接，仍会看到同一份只读报告。" : "当前设备暂时无法连接报告服务器；结果已保存在本机，网络恢复后会自动尝试同步。"}</p></div></div>}
           <div className="result-hero">
             <div className="identity-card">
               <div className="id-top"><span>职业天赋坐标</span><span>完成 18 个场景</span></div>
@@ -816,9 +864,9 @@ export default function Home({ accessToken, apiBaseUrl = "" }: HomeProps = {}) {
             <article className="panel path-panel"><div className="panel-heading"><h2>优先探索的具体岗位</h2><p>先把它们当作访谈和体验清单，再结合你的技能、经历与现实机会判断。</p></div><div className="path-list">{winnerInfo.recommendations.map((item, index) => <div key={item.title} style={{ "--path-delay": `${index * 70}ms` } as React.CSSProperties}><span>{String(index + 1).padStart(2, "0")}</span><section><strong>{item.title}</strong><p>{item.why}</p><small><b>先试一步</b>{item.firstStep}</small></section></div>)}</div></article>
             <article className="panel action-panel"><span className="action-mark" aria-hidden="true">7</span><div className="panel-heading"><h2>7 天微行动</h2></div><p>从上面的方向中挑一个，不急着决定转行。找一位真实从业者，问清楚他一周里最常做的三件事；再用 90 分钟做一个最小体验。你在行动后的能量变化，比任何标签都更接近答案。</p></article>
           </div>
-          <div className="share-card"><div><span>分享你的坐标</span><h2>把这份发现发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}</button></div>
-          <details className="method"><summary>计分规则与使用说明 <span>＋</span></summary><p>每题比较两种职业倾向：越靠近某一端，该项天赋获得的权重越高；选择中间则两边获得相同权重。18 题让六类天赋都得到同等次数的比较，累计得分后排序。图表以本次最高分为 100% 显示相对强度；它反映的是你的偏好，不代表能力上限，也不等于唯一职业答案。</p></details>
-          <footer>职业天赋坐标<br /><span>认识自己，是选择的起点</span></footer>
+          <div data-pdf-exclude className="share-card"><div><span>分享你的坐标</span><h2>把这份发现发给同行的人</h2><p>{shareText}</p></div><button className="primary-button" onClick={copyShare}>{copied ? "已复制 ✓" : "复制分享文案"}</button></div>
+          <details data-pdf-exclude className="method"><summary>计分规则与使用说明 <span>＋</span></summary><p>每题比较两种职业倾向：越靠近某一端，该项天赋获得的权重越高；选择中间则两边获得相同权重。18 题让六类天赋都得到同等次数的比较，累计得分后排序。图表以本次最高分为 100% 显示相对强度；它反映的是你的偏好，不代表能力上限，也不等于唯一职业答案。</p></details>
+          <footer data-pdf-exclude>职业天赋坐标<br /><span>认识自己，是选择的起点</span></footer>
         </section>
       )}
     </main>

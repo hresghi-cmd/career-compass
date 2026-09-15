@@ -115,6 +115,7 @@ test("ships the complete interactive assessment", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
   const pkg = await readFile(new URL("../package.json", import.meta.url), "utf8");
+  const pdfExporter = await readFile(new URL("../lib/report-pdf.ts", import.meta.url), "utf8");
   const fontLicense = await readFile(new URL("../public/licenses/NotoSansSC-OFL.txt", import.meta.url), "utf8");
   const displayFontLicense = await readFile(new URL("../public/licenses/NotoSerifSC-OFL.txt", import.meta.url), "utf8");
   assert.match(page, /localStorage\.setItem/);
@@ -138,7 +139,14 @@ test("ships the complete interactive assessment", async () => {
   assert.match(page, /返回上一题修改/);
   assert.match(page, /返回修改最后一题/);
   assert.match(page, /确认生成报告/);
-  assert.match(page, /打印 \/ 保存 PDF/);
+  assert.match(page, /生成并保存 PDF/);
+  assert.doesNotMatch(page, /window\.print/);
+  assert.match(pdfExporter, /html2canvas-pro/);
+  assert.match(pdfExporter, /pdf\.output\("blob"\)/);
+  assert.match(page, /navigator\.canShare/);
+  assert.match(page, /download=\{pdfDownload\.filename\}/);
+  assert.match(pkg, /"html2canvas-pro"/);
+  assert.match(pkg, /"jspdf"/);
   assert.match(page, /不能返回修改答案或重新测试/);
   assert.doesNotMatch(page, />重新测试</);
   assert.match(page, /const questions: Question\[\]/);
@@ -154,6 +162,69 @@ test("ships the complete interactive assessment", async () => {
   assert.match(displayFontLicense, /SIL OPEN FONT LICENSE Version 1\.1/);
   assert.doesNotMatch(page, /↗/);
   assert.doesNotMatch(pkg, /react-loading-skeleton/);
+});
+
+function createFakeBlobStore() {
+  const values = new Map();
+  return {
+    async get(key) {
+      return values.has(key) ? structuredClone(values.get(key)) : null;
+    },
+    async setJSON(key, value, options = {}) {
+      if (options.onlyIfNew && values.has(key)) throw new Error("already exists");
+      values.set(key, structuredClone(value));
+    },
+  };
+}
+
+test("EdgeOne backend keeps one immutable final report", async () => {
+  const { createAccessHandler } = await import("../edge-functions/_lib/access-handler.js");
+  const progressStore = createFakeBlobStore();
+  const reportStore = createFakeBlobStore();
+  const handle = createAccessHandler({ progressStore, reportStore });
+  const endpoint = "https://career-compass.edgeone.app/api/access/demo-edge-finalize-6r9p2w";
+  const answers = [0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3];
+
+  const opened = await handle(new Request(endpoint));
+  assert.equal(opened.status, 200);
+  assert.equal((await opened.json()).progress.status, "in_progress");
+
+  const saved = await handle(new Request(endpoint, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers: answers.slice(0, 4), current: 4, baseVersion: 0 }),
+  }));
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).progress.version, 1);
+
+  const completed = await handle(new Request(`${endpoint}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers, current: 18, baseVersion: 1 }),
+  }));
+  assert.equal(completed.status, 200);
+  const firstReport = (await completed.json()).progress;
+  assert.equal(firstReport.status, "completed");
+  assert.equal(firstReport.report.reportVersion, "career-report-v1");
+
+  const changedAnswers = answers.map((answer) => 6 - answer);
+  const repeated = await handle(new Request(`${endpoint}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers: changedAnswers, current: 18, baseVersion: 1 }),
+  }));
+  assert.equal(repeated.status, 200);
+  assert.deepEqual((await repeated.json()).progress, firstReport);
+
+  const mutation = await handle(new Request(endpoint, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers: changedAnswers.slice(0, 2), current: 2, baseVersion: 2 }),
+  }));
+  assert.equal(mutation.status, 409);
+
+  const reopened = await handle(new Request(endpoint));
+  assert.deepEqual((await reopened.json()).progress, firstReport);
 });
 
 test("defines the four paid-access states and demo routes", async () => {

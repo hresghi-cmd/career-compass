@@ -63,5 +63,5 @@ export function rankAssessmentScores(scores: Record<TalentKey, number>) {
   return talentOrder
     .map((key, order) => ({ key, raw: scores[key], percent: Math.round((scores[key] / max) * 100), order }))
     .sort((a, b) => b.raw - a.raw || a.order - b.order)
-    .map(({ order: _order, ...item }) => item);
+    .map(({ key, raw, percent }) => ({ key, raw, percent }));
 }

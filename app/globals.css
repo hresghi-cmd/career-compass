@@ -1872,6 +1872,39 @@ summary:focus-visible {
   font-weight: 720;
 }
 
+.report-save-button:disabled {
+  cursor: wait;
+  opacity: .68;
+}
+
+.pdf-download-area {
+  min-height: 0;
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.pdf-message {
+  margin: 0;
+  color: var(--on-canvas-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.pdf-message.is-error {
+  color: #a33e38;
+}
+
+.pdf-download-link {
+  color: var(--accent-deep);
+  font-size: 12px;
+  font-weight: 760;
+  text-underline-offset: 3px;
+}
+
 .report-lock-note {
   margin-top: 18px;
   padding: 15px 18px;

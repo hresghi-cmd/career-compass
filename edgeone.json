@@ -1,0 +1,7 @@
+{
+  "buildCommand": "pnpm exec next build",
+  "installCommand": "corepack enable && pnpm install --frozen-lockfile",
+  "outputDirectory": "out",
+  "nodeVersion": "22.11.0"
+}
+
